@@ -163,8 +163,37 @@ static void retry_success(void) {
     assert(create_calls == BSP_BTN_COUNT);
     (void)button_cleanup(); assert_clean();
 }
-static void check_voltage(int mv, int expected) {
-    raw_mv = mv; clock_us += 2000;
+// 浅睡是可逆的：交出按键脚后，恢复时必须能重新创建全部按键与 ADC。
+static void check_light_sleep_round_trip(void) {
+    reset_faults();
+    gpio_direction_calls = gpio_pull_calls = gpio_level_calls = delay_calls = 0;
+    fail_gpio = 0;
+    gpio_level = 1;
+    assert(bsp_button_init(event_cb, &events) == ESP_OK);
+
+    int level = -1;
+    assert(bsp_button_suspend_for_light_sleep(&level) == ESP_OK);
+    assert(level == 1);
+    assert(!s_ready && !adc_live && !cal_live && !live_buttons);
+    assert(gpio_direction_calls == 1 && gpio_pull_calls == 1 && gpio_level_calls == 1);
+    assert(gpio_last_pin == BSP_BTN_GPIO && gpio_last_pull == GPIO_PULLUP_ONLY);
+    assert(delay_calls == 1);
+
+    const int creates_before = create_calls;
+    assert(bsp_button_resume_after_light_sleep(event_cb, &events) == ESP_OK);
+    assert(create_calls == creates_before + BSP_BTN_COUNT);
+    assert(live_buttons == BSP_BTN_COUNT && s_ready);
+
+    // 恢复后回调照常工作
+    const int events_before = events;
+    cb_click(NULL, (void *)(intptr_t)BSP_BTN_OK);
+    assert(events == events_before + 1);
+
+    assert(button_cleanup() == ESP_OK);
+    assert_clean();
+}
+
+static void check_voltage(int mv, int expected) {    raw_mv = mv; clock_us += 2000;
     const int before = reads;
     for (int i = 0; i < BSP_BTN_COUNT; ++i) {
         assert(s_drivers[i].base.get_key_level(&s_drivers[i].base) == (i == expected));
@@ -205,5 +234,6 @@ int main(void) {
     assert(bsp_button_init(event_cb, &events) == ESP_ERR_INVALID_STATE);
     fail_delete = 0; assert(button_cleanup() == ESP_OK); retry_success();
     check_deep_sleep_prepare();
+    check_light_sleep_round_trip();
     puts("BSP button fault-injection tests: PASS");
 }

@@ -1,5 +1,15 @@
 idf_component_register(
     SRCS "main.c"
+         "archery_app.c"
+         "archery_flow.c"
+         "archery_history.c"
+         "archery_layout.c"
+         "archery_score.c"
+         "archery_session.c"
+         "archery_settings.c"
+         "archery_store.c"
+         "archery_ui.c"
+         "archery_fonts.c"
          "demo_navigation.c"
          "ui_pixel.c"
          "ui_pixel_math.c"
@@ -13,4 +23,11 @@ idf_component_register(
          "demo_low_power.c"
     INCLUDE_DIRS "."
     REQUIRES bsp bt esp_event esp_hw_support esp_netif esp_timer esp_wifi nvs_flash
+)
+
+# 应用专用的中文子集字体（Noto Sans SC，OFL-1.1）。生成命令与字符清单见
+# assets/README.md；重新生成后无需改动这里。
+target_sources(${COMPONENT_LIB} PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}/../assets/fonts/archery_font_16.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../assets/fonts/archery_font_20.c"
 )

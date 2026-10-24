@@ -24,9 +24,16 @@ CONFIG_LV_COLOR_DEPTH_16=y
 CONFIG_LV_DEF_REFR_PERIOD=20
 CONFIG_LV_FONT_MONTSERRAT_14=y
 CONFIG_LV_FONT_MONTSERRAT_20=y
+# 射箭计分器：数字用 20/40 px 的 Montserrat，中文用 assets/fonts 里的
+# Noto Sans SC 子集（archery_font_16 / archery_font_20），不启用整套 CJK 字体。
+CONFIG_LV_FONT_MONTSERRAT_40=y
+# 缺字时保留占位框而不是静默留白，便于在设备上发现未覆盖的汉字。
+CONFIG_LV_TXT_ENC_UTF8=y
+CONFIG_LV_USE_FONT_PLACEHOLDER=y
 # LVGL 内置 malloc 池大小(KB)。它是独立静态区、不与系统堆共享,配大了会白白占用 RAM。
-# 本 demo UI 简单,24KB 足够;若自建复杂界面出现绘制卡死/看门狗,调大此值。
-CONFIG_LV_MEM_SIZE_KILOBYTES=24
+# 计分器每屏几十个对象、按页整屏重建，32KB 留出峰值余量；若自建复杂界面出现
+# 绘制卡死/看门狗,再调大此值。
+CONFIG_LV_MEM_SIZE_KILOBYTES=32
 
 # --- 系统 ---
 CONFIG_FREERTOS_HZ=1000

@@ -236,7 +236,9 @@ int bsp_button_read_mv(void) {
     return mv;
 }
 
-esp_err_t bsp_button_prepare_deep_sleep(int *level) {
+// 把按键脚交回数字输入 + 上拉:深睡与浅睡共用。成功后按键/ADC 已全部释放,
+// 只能通过 bsp_button_init() 恢复。
+static esp_err_t button_release_pin(int *level) {
     if (level) *level = 0;
 
     // ① 先停按键驱动,再放 ADC —— 反过来会让 timer 回调碰到已释放的句柄。
@@ -260,6 +262,27 @@ esp_err_t bsp_button_prepare_deep_sleep(int *level) {
     // 上拉建立需要一点时间,再回读。
     vTaskDelay(pdMS_TO_TICKS(20));
     if (level) *level = gpio_get_level(pin);
-    ESP_LOGI(TAG, "按键已释放,深睡唤醒脚 GPIO%d 电平=%d", (int)pin, level ? *level : -1);
     return ESP_OK;
+}
+
+esp_err_t bsp_button_prepare_deep_sleep(int *level) {
+    esp_err_t err = button_release_pin(level);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "按键已释放,深睡唤醒脚 GPIO%d 电平=%d", BSP_BTN_GPIO,
+                 level ? *level : -1);
+    }
+    return err;
+}
+
+esp_err_t bsp_button_suspend_for_light_sleep(int *level) {
+    esp_err_t err = button_release_pin(level);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "按键已释放,浅睡唤醒脚 GPIO%d 电平=%d", BSP_BTN_GPIO,
+                 level ? *level : -1);
+    }
+    return err;
+}
+
+esp_err_t bsp_button_resume_after_light_sleep(bsp_btn_cb_t cb, void *user) {
+    return bsp_button_init(cb, user);
 }

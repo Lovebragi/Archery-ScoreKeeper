@@ -15,6 +15,34 @@
 - 添加字库前评估 Flash 与内部 RAM 影响；ESP32-C3 无 PSRAM。
 - 不提交许可不允许分发的字库。
 
+### 射箭计分器中文字库子集
+
+射箭计分器不使用整套 CJK 字库，而是按应用实际会显示的字符串生成子集（8 MB
+Flash、无 PSRAM，且界面文本是固定的）。
+
+| 文件 | 内容与用途 |
+| --- | --- |
+| [`fonts/archery_chars.txt`](fonts/archery_chars.txt) | 非 ASCII 码点清单。可打印 ASCII `U+0020`–`U+007E` 始终隐式包含。 |
+| [`fonts/archery_font_16.c`](fonts/archery_font_16.c) | 正文，16 px，4 bpp PLAIN，行高 24 px，位图约 19 KB。 |
+| [`fonts/archery_font_20.c`](fonts/archery_font_20.c) | 标题与强调，20 px，4 bpp PLAIN，行高 30 px，位图约 29 KB。 |
+| [`fonts/archery_font_16.json`](fonts/archery_font_16.json)、[`fonts/archery_font_20.json`](fonts/archery_font_20.json) | 每个字形的度量与打包位图 SHA-256，由 `tests/test_archery_fonts.py` 校验。 |
+| [`fonts/OFL.txt`](fonts/OFL.txt) | 源字族的 SIL Open Font License 1.1。 |
+
+- 源字族：Noto Sans SC，字重 400（可变字体默认实例为 100，生成脚本会显式设置轴值）。
+- 来源：<https://github.com/google/fonts/tree/main/ofl/notosanssc>
+  （`NotoSansSC[wght].ttf`，OFL-1.1）。源字体不提交，生成的子集已足够且能保持
+  仓库体积。
+- 转换：`tools/gen_lvgl_text_font.py` 用 Pillow/FreeType 光栅化后直接输出 LVGL 9
+  `fmt_txt` 格式；刻意不使用 `lv_font_conv`。命令见
+  [`docs/applications/archery-scorekeeper.zh_CN.md`](../docs/applications/archery-scorekeeper.zh_CN.md)
+  与清单文件头部。
+- 目标路径：由 `main/CMakeLists.txt` 链接进 `main` 组件，界面通过
+  `main/archery_fonts.h` 选择 `archery_font_16` / `archery_font_20`。
+- Flash 影响：字形位图与描述符约 53 KB，常驻只读 Flash，不占静态 RAM。
+- 覆盖契约：UI 文本出现字库或清单未覆盖的码点时静态测试失败；修改界面文字后
+  需重新生成两个字级。
+
+
 ## 图片（images）
 
 可复用的源图与生成的显示资产放在 `images/`。

@@ -24,6 +24,16 @@ esp_lcd_panel_io_handle_t bsp_display_io(void);
 // 背光亮度 0..100(%)。LEDC PWM,0=全灭。
 void bsp_display_backlight(uint8_t percent);
 
+// 显示输出开/关(0x29 DISPON / 0x28 DISPOFF)。只控制面板显示输出,面板供电与
+// GRAM 保留,唤醒后重新打开即可;背光由调用方另行控制。用于息屏浅睡:
+// 关显示 + 背光 0,唤醒后开显示 + 恢复亮度。未初始化返回 ESP_ERR_INVALID_STATE。
+esp_err_t bsp_display_set_power(bool on);
+
+// 运行时设置画面是否旋转 180°(0x36 MADCTL 的 MX/MY 双镜像)。屏幕倒装的整机
+// 开机默认值见 bsp_pins.h 的 BSP_LCD_ROTATE_180;应用可以在初始化后按用户设置
+// 再改。调用方应避免与 LVGL 刷屏并发(持有 bsp_lvgl_lock 或确保无刷新)。
+esp_err_t bsp_display_set_flip_180(bool enable);
+
 // deep sleep 专用：关闭显示、让 ST7789 进入 Sleep In，停止背光 PWM，
 // 将 CS/SCLK/MOSI/DC/背光设为安全电平并在 deep sleep 中保持。调用时必须
 // 已阻止 LVGL 刷屏，调用后必须立即进入 deep sleep 或重启。

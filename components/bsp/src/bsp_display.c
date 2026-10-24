@@ -193,7 +193,9 @@ esp_err_t bsp_display_init(void) {
 
     e = esp_lcd_panel_invert_color(s_panel, BSP_LCD_INVERT_COLOR);   // 0x21 / 0x20
     if (e != ESP_OK) { ESP_LOGE(TAG, "面板反色设置失败: %s", esp_err_to_name(e)); goto fail; }
-    e = esp_lcd_panel_mirror(s_panel, false, false);                 // 0x36 MADCTL:本板不需镜像(XY 双镜像 = 画面 180°)
+    e = esp_lcd_panel_mirror(s_panel, false, false);                 // 0x36 MADCTL:此处保持自然方向;
+                                                                    // LVGL 接入时由 esp_lvgl_port 按
+                                                                    // BSP_LCD_ROTATE_180 重新下发。
     if (e != ESP_OK) { ESP_LOGE(TAG, "面板镜像设置失败: %s", esp_err_to_name(e)); goto fail; }
     e = esp_lcd_panel_set_gap(s_panel, 0, 0);
     if (e != ESP_OK) { ESP_LOGE(TAG, "面板偏移设置失败: %s", esp_err_to_name(e)); goto fail; }
@@ -238,6 +240,26 @@ void bsp_display_backlight(uint8_t percent) {
     uint32_t duty = (max_duty * percent) / 100u;
     ledc_set_duty(BSP_BL_LEDC_MODE, BSP_BL_LEDC_CHANNEL, duty);
     ledc_update_duty(BSP_BL_LEDC_MODE, BSP_BL_LEDC_CHANNEL);
+}
+
+esp_err_t bsp_display_set_power(bool on) {
+    if (!s_ready || !s_panel) return ESP_ERR_INVALID_STATE;
+    // DISPOFF 只关闭显示输出,面板供电与 GRAM 保留;不需要重发初始化序列。
+    esp_err_t e = esp_lcd_panel_disp_on_off(s_panel, on);
+    if (e != ESP_OK) {
+        ESP_LOGE(TAG, "显示%s失败: %s", on ? "开启" : "关闭", esp_err_to_name(e));
+    }
+    return e;
+}
+
+esp_err_t bsp_display_set_flip_180(bool enable) {
+    if (!s_ready || !s_panel) return ESP_ERR_INVALID_STATE;
+    // MX/MY 双镜像 = 画面旋转 180°;只改扫描方向,不需要重发初始化序列。
+    esp_err_t e = esp_lcd_panel_mirror(s_panel, enable, enable);
+    if (e != ESP_OK) {
+        ESP_LOGE(TAG, "画面%s失败: %s", enable ? "倒转" : "恢复", esp_err_to_name(e));
+    }
+    return e;
 }
 
 esp_err_t bsp_display_prepare_deep_sleep(void) {

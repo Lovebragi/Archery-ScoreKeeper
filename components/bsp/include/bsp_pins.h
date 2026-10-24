@@ -27,6 +27,11 @@
 // 若换屏后画面呈负片,把这里改成 0。
 #define BSP_LCD_INVERT_COLOR 1
 
+// 面板安装方向:1 = 画面旋转 180°。本机屏幕相对自然方向倒装,界面文字朝上时
+// 逻辑坐标的上方才是用户视角的上方。LVGL 的旋转/镜像必须在 esp_lvgl_port
+// 注册显示时下发(MADCTL),否则会被 port 的初始化覆盖,见 bsp_display_lvgl.c。
+#define BSP_LCD_ROTATE_180 1
+
 // 背光 LEDC 参数
 #define BSP_BL_LEDC_TIMER    LEDC_TIMER_0
 #define BSP_BL_LEDC_MODE     LEDC_LOW_SPEED_MODE

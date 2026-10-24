@@ -86,7 +86,10 @@ lv_display_t *bsp_lvgl_init(void) {
         .hres = BSP_LCD_W, .vres = BSP_LCD_H,
         // 旋转/镜像必须在这里配:esp_lvgl_port 注册显示时会重新下发 MADCTL,
         // 覆盖 bsp_display.c 里 esp_lcd_panel_mirror() 的设置。
-        .rotation = { .swap_xy = false, .mirror_x = false, .mirror_y = false },
+        // XY 双镜像 = 画面 180°,用于屏幕倒装的整机(BSP_LCD_ROTATE_180)。
+        .rotation = { .swap_xy = false,
+                      .mirror_x = (BSP_LCD_ROTATE_180 != 0),
+                      .mirror_y = (BSP_LCD_ROTATE_180 != 0) },
         // swap_bytes:LVGL 输出小端 RGB565,ST7789 走 SPI 要大端 → 需交换高低字节。
         .flags = { .buff_dma = true, .swap_bytes = true },
     };

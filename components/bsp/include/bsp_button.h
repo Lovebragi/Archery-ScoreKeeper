@@ -41,6 +41,18 @@ esp_err_t bsp_button_init(bsp_btn_cb_t cb, void *user);
 // 那时按键还活着。)
 esp_err_t bsp_button_prepare_deep_sleep(int *level);
 
+// 浅睡/息屏用:停掉三个按键设备、释放共享 ADC unit,再把按键脚交回普通数字输入
+// 并开启上拉(与板上 10k 外部上拉并联),level 回填当时电平,1 = 松开。
+//
+// 与 prepare_deep_sleep 的区别只在于约定:本操作是【可逆】的,唤醒后调用
+// bsp_button_resume_after_light_sleep() 即可恢复按键。电平为低时说明有键按着,
+// 调用方应放弃这次休眠(否则低电平唤醒条件在入睡瞬间就成立)。
+// 唤醒源(esp_sleep_enable_gpio_wakeup / gpio_wakeup_enable)由调用方配置。
+esp_err_t bsp_button_suspend_for_light_sleep(int *level);
+
+// 浅睡唤醒后恢复按键:重新创建按键设备与 ADC,并重新登记回调。
+esp_err_t bsp_button_resume_after_light_sleep(bsp_btn_cb_t cb, void *user);
+
 // 读当前 ADC 原始电压(mV)。松开时约 3300;按住某键时约为该键的分压值。
 // ★ 换了分压/上拉阻值后,用它测出自己的三档电压,再改 bsp_pins.h 的 BSP_BTN_MV_TABLE。
 // 读取失败返回 -1。

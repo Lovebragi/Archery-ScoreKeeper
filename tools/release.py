@@ -153,8 +153,12 @@ def cmd_status(args):
     print(f"version:  {version} ({channel})")
     print(f"branch:   {git('branch', '--show-current')}")
     print(f"head:     {git('rev-parse', '--short', 'HEAD')}")
-    tags = git("tag", "--points-at", "HEAD", check=False)
-    print(f"tags:     {tags or '-'}")
+    tag_name = f"v{version}"
+    if git("tag", "--list", tag_name, check=False):
+        target = git("rev-parse", "--short", tag_name)
+        print(f"tag:      {tag_name} -> {target}")
+    else:
+        print(f"tag:      {tag_name} missing")
     if FIRMWARE.exists():
         print(f"firmware: {FIRMWARE.relative_to(ROOT)} {FIRMWARE.stat().st_size} bytes")
         print(f"sha256:   {sha256(FIRMWARE)}")

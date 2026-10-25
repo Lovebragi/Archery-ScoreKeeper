@@ -110,11 +110,22 @@ def git(*args, check=True):
 
 
 def remote_repo():
-    url = os.environ.get("GITHUB_REPOSITORY") or git("remote", "get-url", "origin")
-    match = re.search(r"github\.com[:/](?P<repo>[^/]+/[^/.]+?)(?:\.git)?$", url)
-    if not match:
-        raise SystemExit(f"cannot derive GitHub repository from {url}")
-    return match.group("repo")
+    """Find a GitHub remote; origin may point at a mirror such as Gitee."""
+    explicit = os.environ.get("GITHUB_REPOSITORY")
+    if explicit:
+        return explicit
+    names = git("remote").splitlines()
+    ordered = ["lovebragi", "github", "origin"] + names
+    seen = set()
+    for name in ordered:
+        if name in seen:
+            continue
+        seen.add(name)
+        url = git("remote", "get-url", name, check=False)
+        match = re.search(r"github\.com[:/](?P<repo>[^/]+/[^/.]+?)(?:\.git)?$", url)
+        if match:
+            return match.group("repo")
+    raise SystemExit("no GitHub remote found; pass --repo owner/name")
 
 
 def api(method, url, token, data=None, raw=None, content_type="application/json"):
@@ -124,8 +135,13 @@ def api(method, url, token, data=None, raw=None, content_type="application/json"
     request.add_header("Accept", "application/vnd.github+json")
     request.add_header("User-Agent", "archery-release")
     request.add_header("Content-Type", content_type)
+    proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    opener = urllib.request.build_opener()
+    if proxy:
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({"https": proxy, "http": proxy}))
     try:
-        with urllib.request.urlopen(request, timeout=300) as response:
+        with opener.open(request, timeout=300) as response:
             payload = response.read()
             return response.status, (json.loads(payload.decode("utf-8")) if payload else {})
     except urllib.error.HTTPError as error:

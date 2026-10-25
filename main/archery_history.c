@@ -44,9 +44,9 @@ void archery_history_meta_after_save(archery_history_meta_t *meta) {
     if (meta->next_seq < UINT16_MAX) meta->next_seq++;
 }
 
-uint8_t archery_history_slot_for_seq(uint16_t seq) {
-    if (seq == 0) return 0xFFu;
-    return (uint8_t)((uint16_t)(seq - 1u) % ARCHERY_HISTORY_CAPACITY);
+uint16_t archery_history_slot_for_seq(uint16_t seq) {
+    if (seq == 0) return ARCHERY_HISTORY_SLOT_INVALID;
+    return (uint16_t)((seq - 1u) % ARCHERY_HISTORY_CAPACITY);
 }
 
 uint16_t archery_history_seq_newest(const archery_history_meta_t *meta,
@@ -62,10 +62,11 @@ uint16_t archery_history_seq_newest(const archery_history_meta_t *meta,
 
 void archery_record_from_session(archery_record_t *record,
                                  const archery_session_t *session,
-                                 uint16_t seq, uint16_t duration_s) {
+                                 uint16_t seq, uint16_t duration_s, uint32_t when) {
     memset(record, 0, sizeof(*record));
     record->seq = seq;
     record->duration_s = duration_s;
+    record->when = when;
     record->groups = session->groups;
     record->arrows = session->arrows;
     record->target = session->target;
@@ -182,6 +183,10 @@ size_t archery_record_encode(const archery_record_t *record,
     buffer[6] = (uint8_t)(record->seq >> 8);
     buffer[7] = (uint8_t)(record->duration_s & 0xFFu);
     buffer[8] = (uint8_t)(record->duration_s >> 8);
+    buffer[9] = (uint8_t)(record->when & 0xFFu);
+    buffer[10] = (uint8_t)((record->when >> 8) & 0xFFu);
+    buffer[11] = (uint8_t)((record->when >> 16) & 0xFFu);
+    buffer[12] = (uint8_t)((record->when >> 24) & 0xFFu);
     // 只有前 groups*arrows 个环值有意义；校验每个都必须是合法环值。
     for (size_t i = 0; i < (size_t)record->groups * record->arrows; i++) {
         const uint8_t code = packed_get(record, (uint8_t)i);
@@ -203,8 +208,10 @@ bool archery_record_decode(archery_record_t *record,
     size_t header_bytes;
     if (version == ARCHERY_RECORD_VERSION) {
         header_bytes = ARCHERY_RECORD_HEADER_BYTES;
+    } else if (version == ARCHERY_RECORD_VERSION_V2) {
+        header_bytes = ARCHERY_RECORD_HEADER_BYTES - 4u;  // 旧版没有时间戳
     } else if (version == ARCHERY_RECORD_VERSION_V1) {
-        header_bytes = ARCHERY_RECORD_HEADER_BYTES - 1u;  // 旧版没有靶型字段
+        header_bytes = ARCHERY_RECORD_HEADER_BYTES - 5u;  // 旧版没有靶型与时间戳
     } else {
         return false;
     }
@@ -224,7 +231,7 @@ bool archery_record_decode(archery_record_t *record,
     decoded.groups = groups;
     decoded.arrows = arrows;
     size_t seq_offset = 4;
-    if (version == ARCHERY_RECORD_VERSION) {
+    if (version == ARCHERY_RECORD_VERSION || version == ARCHERY_RECORD_VERSION_V2) {
         decoded.target = buffer[4];
         if (!archery_target_valid(decoded.target)) return false;
         seq_offset = 5;
@@ -234,6 +241,10 @@ bool archery_record_decode(archery_record_t *record,
     decoded.seq = (uint16_t)(buffer[seq_offset] | ((uint16_t)buffer[seq_offset + 1] << 8));
     decoded.duration_s = (uint16_t)(buffer[seq_offset + 2] |
                                     ((uint16_t)buffer[seq_offset + 3] << 8));
+    if (version == ARCHERY_RECORD_VERSION) {
+        decoded.when = (uint32_t)buffer[9] | ((uint32_t)buffer[10] << 8) |
+                       ((uint32_t)buffer[11] << 16) | ((uint32_t)buffer[12] << 24);
+    }
     memcpy(decoded.packed, &buffer[header_bytes], score_bytes);
     for (size_t i = 0; i < (size_t)groups * arrows; i++) {
         if (!archery_score_valid(packed_get(&decoded, (uint8_t)i))) return false;

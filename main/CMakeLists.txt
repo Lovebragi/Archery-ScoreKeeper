@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS "main.c"
          "archery_app.c"
+         "archery_clock.c"
          "archery_flow.c"
          "archery_history.c"
          "archery_layout.c"

@@ -4,6 +4,7 @@
 // action 执行。这样页面流转、边界钳制和按钮语义都可以在主机上单测。
 #pragma once
 
+#include "archery_clock.h"
 #include "archery_session.h"
 #include "archery_settings.h"
 #include <stdbool.h>
@@ -20,6 +21,7 @@ typedef enum {
     ARCHERY_PAGE_CLEAR_CONFIRM,
     ARCHERY_PAGE_ABORT_CONFIRM,
     ARCHERY_PAGE_SETTINGS,
+    ARCHERY_PAGE_CLOCK,
 } archery_page_t;
 
 // 主页入口数：开始训练 / 历史记录 / 设置。
@@ -29,8 +31,10 @@ typedef enum {
 #define ARCHERY_ENTRY_ROWS_MAX (ARCHERY_RING_SLOT_MAX + 1u)
 // 三联靶的靶面数：上 / 中 / 下。
 #define ARCHERY_FACES 3u
-// 设置页行数上限：三联靶比单靶多出上/中/下三行箭数。
+// 新训练页行数上限：组数 + 箭数 + 上/中/下 + 开始。
 #define ARCHERY_SETUP_ROWS_MAX 6u
+// 手动对时页的字段数：年 / 月 / 日 / 时 / 分。
+#define ARCHERY_CLOCK_ROWS 5u
 
 typedef enum {
     ARCHERY_KEY_UP = 0,
@@ -58,8 +62,10 @@ typedef enum {
     ARCHERY_ACT_SESSION_START,  // 开始新训练：上层记录起始时间
     ARCHERY_ACT_SAVE_RECORD,    // 训练完成：上层把会话写入历史
     ARCHERY_ACT_CLEAR_HISTORY,  // 清空全部历史记录
-    ARCHERY_ACT_SETTINGS_CHANGED,  // 设置项改了：上层立即应用亮度/息屏时间
+    ARCHERY_ACT_SETTINGS_CHANGED,  // 设置项改了：上层立即应用亮度/方向/息屏
     ARCHERY_ACT_SETTINGS_SAVE,     // 离开设置页：上层把设置写入 NVS
+    ARCHERY_ACT_CLOCK_SAVE,        // 手动对时完成：上层设置时钟并持久化
+    ARCHERY_ACT_HISTORY_FILTER,    // 历史筛选变了：上层重算可见条数
 } archery_act_t;
 
 typedef struct {
@@ -71,8 +77,9 @@ typedef struct {
     uint8_t setup_row;      // 0 = 组数, 1 = 每组箭数, 2..4 = 上/中/下, 最后 = 开始
     uint8_t setup_face[ARCHERY_FACES];  // 三联靶上/中/下各几根箭
     uint8_t home_select;    // 0 = 开始训练, 1 = 历史记录, 2 = 设置
-    uint16_t history_count; // 由上层同步：本地已有记录数
-    uint8_t history_cursor; // 0..count，count 表示"清空全部记录"行
+    uint16_t history_count; // 由上层同步：当前筛选下的记录数
+    uint16_t history_cursor; // 0..count+1（count = 清空行，count+1 = 返回行）
+    uint8_t history_filter; // archery_history_filter_t
     uint8_t detail_group;   // 历史详情当前查看的组
     uint8_t detail_groups;  // 当前查看记录的总组数（进入详情时由上层设置）
     bool confirm_yes;       // 确认页当前选择
@@ -81,7 +88,11 @@ typedef struct {
     uint8_t entry_face;     // 三联靶当前录入的靶面 0..2
     uint8_t entry_row;      // 0..槽位数-1 为环值行，槽位数为提交行
     archery_settings_t settings;  // 靶型与省电设置（由上层从 NVS 载入）
-    uint8_t settings_row;   // 0 = 靶型, 1 = 亮度, 2 = 息屏时间, 3 = 返回
+    uint8_t settings_row;   // 0 = 靶型, 1 = 方向, 2 = 亮度, 3 = 息屏, 4 = 日期时间, 5 = 返回
+    uint32_t clock_now;     // 上层每次处理按键/刷新界面前同步的当前时间
+    archery_datetime_t clock_fields;  // 手动对时页正在编辑的字段
+    uint8_t clock_row;      // 0..4 = 年/月/日/时/分
+    bool clock_set;         // 是否已经手动校准过（显示"时间未校准"提示）
 } archery_flow_t;
 
 void archery_flow_init(archery_flow_t *flow);
@@ -98,5 +109,8 @@ void archery_flow_set_settings(archery_flow_t *flow, const archery_settings_t *s
 // 处理一次按键：更新状态并返回需要上层执行的副作用。
 archery_act_t archery_flow_handle(archery_flow_t *flow, archery_key_t key);
 
-// 历史记录数量变化（写入新记录或清空后）由上层同步进来，重新钳制光标。
+// 历史记录数量变化（写入新记录、清空或切换筛选后）由上层同步进来，重新钳制光标。
 void archery_flow_set_history_count(archery_flow_t *flow, uint16_t count);
+
+// 当前时间（秒）由上层同步，供手动对时页初始化和"今天/最近 7 天"筛选使用。
+void archery_flow_set_clock(archery_flow_t *flow, uint32_t now, bool time_set);

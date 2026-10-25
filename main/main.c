@@ -1,11 +1,12 @@
 // main/main.c —— 射箭计分器固件入口。
 //
-// 应用目标：40cm 半靶（6~10 环 + 内十 X，脱靶记 M）训练计分，训练前设置组数与
-// 每组箭数（默认 6×6），组内逐箭录入、整组确认，成绩保存在 NVS 并可查询历史。
-// 硬件能力（显示、按键、电量计）全部通过 components/bsp 复用，界面在
-// main/archery_ui.c 中重新设计，不使用基线 demo 的测试菜单。
+// 应用目标：40 半靶、三联靶与 40/80/122 全靶训练计分，训练前设置组数与每组
+// 箭数（默认 6×6，三联靶还要分上/中/下），组内按环值统计箭数、整组确认，成绩
+// 带时间戳保存在 NVS（最近 300 条）并可查询历史。硬件能力（显示、按键、电量计）
+// 全部通过 components/bsp 复用，界面在 main/archery_ui.c 中重新设计，不使用
+// 基线 demo 的测试菜单。
 //
-// 屏幕按整机倒装 180° 显示，由 bsp_pins.h 的 BSP_LCD_ROTATE_180 统一配置。
+// 屏幕方向由设置决定（默认倒装 180°），运行时通过 MADCTL 切换。
 #include "archery_app.h"
 #include "bsp_battery.h"
 #include "bsp_display.h"
@@ -30,7 +31,7 @@ static esp_err_t storage_init(void) {
 }
 
 void app_main(void) {
-    ESP_LOGI(TAG, "射箭计分器启动 (40 半靶 · 6-10 环 + X)");
+    ESP_LOGI(TAG, "射箭计分器启动（半靶/三联/全靶，300 条历史）");
 
     bsp_i2c_init();
 

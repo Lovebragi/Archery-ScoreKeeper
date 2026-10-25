@@ -39,11 +39,17 @@ void archery_flow_init(archery_flow_t *flow) {
     split_faces(flow->setup_arrows, flow->setup_face);
     flow->home_select = 0;
     flow->history_cursor = 0;
+    flow->history_filter = ARCHERY_HISTORY_FILTER_ALL;
     flow->detail_group = 0;
     flow->detail_groups = 1;
     flow->entry_row = 0;
     flow->entry_face = 0;
     flow->settings_row = 0;
+    flow->clock_fields.year = ARCHERY_CLOCK_EPOCH_YEAR;
+    flow->clock_fields.month = 1;
+    flow->clock_fields.day = 1;
+    flow->clock_row = 0;
+    flow->clock_set = false;
     archery_settings_defaults(&flow->settings);
 }
 
@@ -54,8 +60,15 @@ void archery_flow_set_settings(archery_flow_t *flow, const archery_settings_t *s
 
 void archery_flow_set_history_count(archery_flow_t *flow, uint16_t count) {
     flow->history_count = count;
-    const uint16_t max_cursor = count == 0 ? 0 : count;  // count 行 = 清空入口
-    if (flow->history_cursor > max_cursor) flow->history_cursor = (uint8_t)max_cursor;
+    // 空历史只有"返回主页"一行；否则记录后还有"清空"与"返回"两行。
+    const uint16_t max_cursor = count == 0 ? 0 : (uint16_t)(count + 1u);
+    if (flow->history_cursor > max_cursor) flow->history_cursor = max_cursor;
+}
+
+void archery_flow_set_clock(archery_flow_t *flow, uint32_t now, bool time_set) {
+    if (!flow) return;
+    flow->clock_now = now;
+    flow->clock_set = time_set;
 }
 
 // 物理按键角色映射：自然方向就是"上/下/确定"；整机倒装时角色转 180°。
@@ -85,8 +98,20 @@ static void move_cursor(uint8_t *value, int delta, uint8_t min, uint8_t max) {
     *value = (uint8_t)next;
 }
 
-static uint8_t history_max_cursor(const archery_flow_t *flow) {
-    return flow->history_count == 0 ? 0 : (uint8_t)flow->history_count;
+static void move_cursor16(uint16_t *value, int delta, uint16_t min, uint16_t max) {
+    int next = (int)*value + delta;
+    if (next < (int)min) next = (int)min;
+    if (next > (int)max) next = (int)max;
+    *value = (uint16_t)next;
+}
+
+// 历史页行数：空历史只显示一行"返回主页"；有记录时是 记录 + 清空 + 返回。
+static uint16_t history_rows(const archery_flow_t *flow) {
+    return flow->history_count == 0 ? 1u : (uint16_t)(flow->history_count + 2u);
+}
+
+static uint16_t history_max_cursor(const archery_flow_t *flow) {
+    return (uint16_t)(history_rows(flow) - 1u);
 }
 
 // 进入新一组的录入：各靶面各环箭数清零，光标回到最高环。
@@ -134,6 +159,76 @@ static archery_act_t handle_home(archery_flow_t *flow, archery_key_t key) {
     return ARCHERY_ACT_NONE;
 }
 
+// 手动对时的字段调整：年/月/日会顺带把"日"钳到当月天数内。
+static void clock_adjust(archery_datetime_t *dt, uint8_t field, int delta) {
+    switch (field) {
+    case 0: {
+        int year = (int)dt->year + delta;
+        if (year < (int)ARCHERY_CLOCK_MIN_YEAR) year = (int)ARCHERY_CLOCK_MIN_YEAR;
+        if (year > (int)ARCHERY_CLOCK_MAX_YEAR) year = (int)ARCHERY_CLOCK_MAX_YEAR;
+        dt->year = (uint16_t)year;
+        break;
+    }
+    case 1: {
+        int month = (int)dt->month + delta;
+        if (month < 1) month = 1;
+        if (month > 12) month = 12;
+        dt->month = (uint8_t)month;
+        break;
+    }
+    case 2: {
+        int day = (int)dt->day + delta;
+        const int max = (int)archery_clock_days_in_month(dt->year, dt->month);
+        if (day < 1) day = 1;
+        if (day > max) day = max;
+        dt->day = (uint8_t)day;
+        return;
+    }
+    case 3: {
+        int hour = (int)dt->hour + delta;
+        if (hour < 0) hour = 0;
+        if (hour > 23) hour = 23;
+        dt->hour = (uint8_t)hour;
+        return;
+    }
+    default: {
+        int minute = (int)dt->minute + delta;
+        if (minute < 0) minute = 0;
+        if (minute > 59) minute = 59;
+        dt->minute = (uint8_t)minute;
+        return;
+    }
+    }
+    // 年/月变化后，把日钳进当月范围（例如 1/31 -> 2 月变成 2/28）。
+    const int max = (int)archery_clock_days_in_month(dt->year, dt->month);
+    if (dt->day > max) dt->day = (uint8_t)max;
+}
+
+static archery_act_t handle_clock(archery_flow_t *flow, archery_key_t key) {
+    switch (key) {
+    case ARCHERY_KEY_UP:
+    case ARCHERY_KEY_DOWN:
+        clock_adjust(&flow->clock_fields, flow->clock_row,
+                     key == ARCHERY_KEY_UP ? 1 : -1);
+        break;
+    case ARCHERY_KEY_OK:
+        if (flow->clock_row + 1u < ARCHERY_CLOCK_ROWS) {
+            flow->clock_row++;
+        } else {
+            // 分字段按确定 = 保存对时并回到设置页的"返回"行。
+            flow->page = ARCHERY_PAGE_SETTINGS;
+            flow->settings_row = 5;
+            return ARCHERY_ACT_CLOCK_SAVE;
+        }
+        break;
+    case ARCHERY_KEY_OK_LONG:
+        flow->page = ARCHERY_PAGE_SETTINGS;
+        flow->settings_row = 5;
+        return ARCHERY_ACT_CLOCK_SAVE;
+    }
+    return ARCHERY_ACT_NONE;
+}
+
 static archery_act_t handle_settings(archery_flow_t *flow, archery_key_t key) {
     switch (key) {
     case ARCHERY_KEY_UP:
@@ -146,7 +241,12 @@ static archery_act_t handle_settings(archery_flow_t *flow, archery_key_t key) {
         }
         break;
     case ARCHERY_KEY_OK:
-        if (flow->settings_row + 1u < ARCHERY_SETTINGS_ROWS) {
+        if (flow->settings_row == 4) {
+            // 进入手动对时页：以当前时钟为初值。
+            archery_seconds_to_datetime(flow->clock_now, &flow->clock_fields);
+            flow->clock_row = 0;
+            flow->page = ARCHERY_PAGE_CLOCK;
+        } else if (flow->settings_row + 1u < ARCHERY_SETTINGS_ROWS) {
             flow->settings_row++;
         } else {
             flow->page = ARCHERY_PAGE_HOME;
@@ -289,23 +389,32 @@ static archery_act_t handle_history(archery_flow_t *flow, archery_key_t key) {
     case ARCHERY_KEY_UP:
     case ARCHERY_KEY_DOWN: {
         const int delta = key == ARCHERY_KEY_UP ? -1 : 1;
-        const uint8_t max = history_max_cursor(flow);
-        move_cursor(&flow->history_cursor, delta, 0, max);
+        const uint16_t max = history_max_cursor(flow);
+        move_cursor16(&flow->history_cursor, delta, 0, max);
         break;
     }
     case ARCHERY_KEY_OK:
-        if (flow->history_count == 0) break;
-        if (flow->history_cursor < flow->history_count) {
+        if (flow->history_count == 0) {
+            // 空历史的唯一一行是"返回主页"。
+            flow->page = ARCHERY_PAGE_HOME;
+        } else if (flow->history_cursor < flow->history_count) {
             flow->detail_group = 0;
             flow->page = ARCHERY_PAGE_DETAIL;
-        } else {
+        } else if (flow->history_cursor == flow->history_count) {
+            // "清空全部记录"行
             flow->confirm_yes = false;
             flow->page = ARCHERY_PAGE_CLEAR_CONFIRM;
+        } else {
+            // "返回主页"行
+            flow->page = ARCHERY_PAGE_HOME;
         }
         break;
     case ARCHERY_KEY_OK_LONG:
-        flow->page = ARCHERY_PAGE_HOME;
-        break;
+        // 长按确定循环切换筛选：全部 -> 今天 -> 最近 7 天 -> 全部。
+        flow->history_filter = (uint8_t)((flow->history_filter + 1u) %
+                                         ARCHERY_HISTORY_FILTER_COUNT);
+        flow->history_cursor = 0;
+        return ARCHERY_ACT_HISTORY_FILTER;
     }
     return ARCHERY_ACT_NONE;
 }
@@ -388,6 +497,7 @@ archery_act_t archery_flow_handle(archery_flow_t *flow, archery_key_t key) {
     case ARCHERY_PAGE_CLEAR_CONFIRM: return handle_clear_confirm(flow, key);
     case ARCHERY_PAGE_ABORT_CONFIRM: return handle_abort_confirm(flow, key);
     case ARCHERY_PAGE_SETTINGS: return handle_settings(flow, key);
+    case ARCHERY_PAGE_CLOCK: return handle_clock(flow, key);
     }
     return ARCHERY_ACT_NONE;
 }

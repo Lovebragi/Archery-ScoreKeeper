@@ -2,11 +2,12 @@
   <a href="archery-scorekeeper.zh_CN.md">简体中文</a> · <strong>English</strong>
 </p>
 
-# Archery Scorekeeper (40 cm Half Target)
+# Archery Scorekeeper (Half and Full Targets)
 
-An offline score keeper for 40 cm half-target practice. It runs on FoloToy AI
-Passport, records a configurable number of groups and arrows, stores the last
-50 sessions in NVS, and shows them again from the history screen. The
+An offline score keeper for 40 cm half targets, three-spot faces and 40/80/122 cm
+full targets. It runs on FoloToy AI Passport, records a configurable number of
+groups and arrows, stores the last 300 sessions with timestamps in NVS, and shows
+them again from the history screen with an all / today / last-7-days filter. The
 application owns the display and the three buttons; it never uses the baseline
 test menu and needs no network, audio, or cloud account.
 
@@ -56,13 +57,14 @@ immediately.
 | --- | --- | --- | --- | --- |
 | Home | Target rings, three entries, battery | Select entry | Enter | – |
 | Setup | Group count, arrows per group, per-face arrows for the three-spot target, start | Adjust the focused value | Next field / start | Previous field (back to home on the first row) |
-| Settings | Target type, screen orientation, screen brightness, screen-off time, back | Adjust the focused value | Next field / save and back | Save and back |
+| Settings | Target type, screen orientation, screen brightness, screen-off time, date/time, back | Adjust the focused value | Next field / open date-time / save and back | Save and back |
 | Entry | Two-column ring tally for the current group and a commit row (one face at a time for the three-spot target) | Change the highlighted ring's arrow count | Next ring / commit row | Previous ring (abandon confirmation on the first row) |
 | Summary | Finished group, running total, group dots | – | Next group / summary | Abandon confirmation |
 | Finish | Session total, average, X/M, save state | – | Back to home | Back to home |
-| History | Newest 50 sessions, clear-all row | Move cursor | Open detail / clear | Back to home |
+| History | Timestamped sessions (newest 300), all / today / last-7-days filter, clear and back rows (an empty list still shows the back row) | Move cursor | Open detail / clear / home | Cycle filter |
 | Detail | One group of one session, shown as the same ring tally | Previous / next group | Back | Back |
 | Confirmation | Abandon session or clear history | Select option | Execute | Cancel |
+| Date/time | Year, month, day, hour, minute | Adjust the focused field | Next field / save | Save |
 
 A group is recorded as "how many arrows landed on each ring" instead of
 arrow-by-arrow: the entry screen lists X, 10, 9, 8, 7, 6 and miss, each with a
@@ -76,20 +78,23 @@ more OK instead of walking through the remaining empty rows.
 ## Persistence
 
 - NVS namespace `archery`.
-- One blob per record under `s00`…`s49` and one `meta` blob holding the next
-  sequence number. The slot is `(seq - 1) % 50`, so the newest 50 sessions are
-  always addressable without rewriting older records.
+- One blob per record under `s000`…`s299` and one `meta` blob holding the next
+  sequence number. The slot is `(seq - 1) % 300`, so the newest 300 sessions are
+  always addressable without rewriting older records. The NVS partition is
+  256 KB, which leaves room for 300 full 12 × 12 records.
 - Records carry a version byte and a CRC-16/CCITT check. A record that fails the
   check is ignored; on boot the application rescans all slots, repairs the meta
   blob, and keeps the newest contiguous run of valid records.
 - The record stores group count, arrows per group, target type, duration in
-  seconds, and 4-bit packed ring codes (144 arrows fit in 72 bytes). Records
-  written before the target field existed still decode and are treated as 40 cm
-  half-target sessions.
-- Clearing history erases the namespace and restarts numbering at 1.
-- The device has no battery-backed clock and no network time source, so records
-  are identified by their sequence number and duration instead of a wall-clock
-  date.
+  seconds, a timestamp, and 4-bit packed ring codes (144 arrows fit in 72 bytes).
+  Records written before the target or timestamp fields existed still decode and
+  fall back to a 40 cm half target and an unknown time.
+- Clearing history erases the record blobs and restarts numbering at 1; settings
+  and the clock are kept.
+- The device has no battery-backed RTC and no network time source. The clock is
+  a persisted local wall time plus a monotonic timer: it keeps running while
+  powered, resumes from the last saved value after power loss, and can be set by
+  hand in Settings. History filters use that clock, and unknown times show `--`.
 
 ## Fonts
 
@@ -98,7 +103,7 @@ generated from the UI's own strings:
 
 - `assets/fonts/archery_chars.txt` — the non-ASCII code point inventory.
 - `assets/fonts/archery_font_16.c`, `archery_font_20.c` — generated LVGL fonts
-  (4 bpp, PLAIN, no kerning, about 53 KB of bitmap data in Flash).
+  (4 bpp, PLAIN, no kerning, about 61 KB of bitmap data in Flash).
 - `assets/fonts/archery_font_16.json`, `archery_font_20.json` — per-glyph
   checksums used by the static gate.
 
@@ -124,7 +129,7 @@ Source font and license are recorded in [`assets/README.md`](../../assets/README
 
 ## Power behaviour
 
-The home screen has a third entry, Settings, with four controls:
+The home screen has a third entry, Settings, with five controls:
 
 | Setting | Values | Default |
 | --- | --- | --- |
@@ -132,6 +137,7 @@ The home screen has a third entry, Settings, with four controls:
 | Screen orientation | Inverted / Normal | Inverted |
 | Screen brightness | 20 / 40 / 60 / 80 / 100% | 100% |
 | Screen-off time | 0 / 15 / 30 / 60 / 120 s (`0` keeps the screen on) | 30 s |
+| Date/time | Local wall clock, set by hand | Build time until calibrated |
 
 After the configured idle time the application turns the backlight off, disables
 the display output, hands the shared key pin back to a digital input and enters

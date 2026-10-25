@@ -409,65 +409,73 @@ static void render_history(lv_obj_t *scr, const archery_flow_t *flow,
                            const archery_history_t *history) {
     add_title(scr, "历史记录");
 
+    const uint16_t count = archery_history_visible_count(
+        history, flow->history_filter, flow->clock_now);
+    static const char *filter_names[] = {"全部", "今天", "最近 7 天"};
     char subtitle[48];
-    snprintf(subtitle, sizeof(subtitle), "共 %u 条 · 最多 %u 条",
-             (unsigned)history->meta.count, (unsigned)ARCHERY_HISTORY_CAPACITY);
+    snprintf(subtitle, sizeof(subtitle), "共 %u 条 · %s",
+             (unsigned)count, filter_names[flow->history_filter]);
     centered_label(scr, subtitle, ARCHERY_FONT_BODY, C_MUTED, 40);
 
-    if (history->meta.count == 0) {
-        centered_label(scr, "暂无训练记录", ARCHERY_FONT_TITLE, C_TEXT, 132);
-        centered_label(scr, "完成一次训练后会自动保存", ARCHERY_FONT_BODY, C_MUTED, 168);
-        add_hint(scr, "长按确定 返回主页", 284);
+    if (count == 0) {
+        centered_label(scr, "暂无训练记录", ARCHERY_FONT_TITLE, C_TEXT, 96);
+        centered_label(scr, "完成一次训练后会自动保存", ARCHERY_FONT_BODY, C_MUTED, 132);
+        // 空历史也保留一个可见的退出入口，避免只剩长按操作。
+        const archery_rect_t rect = {16, 180, 208, 42};
+        const bool selected = flow->history_cursor == 0;
+        lv_obj_t *card = make_card(scr, rect, selected, false);
+        lv_obj_t *label = make_label(card, "返回主页", ARCHERY_FONT_BODY,
+                                     selected ? C_GOLD : C_TEXT);
+        lv_obj_center(label);
+        add_hint(scr, "确定 返回 · 长按 切换筛选", 284);
         return;
     }
 
-    // 4 行可视窗口 + 末尾"清空"行。
+    // 4 行可视窗口，记录之后固定"清空全部记录"和"返回主页"两行。
     const uint8_t visible = 4;
-    const uint16_t total_rows = (uint16_t)(history->meta.count + 1u);
+    const uint16_t total_rows = (uint16_t)(count + 2u);
     const uint16_t cursor = flow->history_cursor;
-    const uint8_t offset = archery_layout_list_offset((uint8_t)cursor,
-                                                      (uint8_t)total_rows, visible);
+    uint16_t offset = 0;
+    if (cursor >= visible) offset = (uint16_t)(cursor - visible + 1u);
     for (uint8_t row = 0; row < visible; row++) {
         const uint16_t index = (uint16_t)(offset + row);
         if (index >= total_rows) break;
         const archery_rect_t rect = {16, (int16_t)(66 + row * 48), 208, 42};
         const bool selected = index == cursor;
-        if (index == history->meta.count) {
-            lv_obj_t *card = make_card(scr, rect, selected, true);
-            lv_obj_t *label = make_label(card, "清空全部记录", ARCHERY_FONT_BODY,
-                                         selected ? C_RED : C_MUTED);
+        if (index >= count) {
+            const bool is_clear = index == count;
+            lv_obj_t *card = make_card(scr, rect, selected, is_clear);
+            lv_obj_t *label = make_label(card, is_clear ? "清空全部记录" : "返回主页",
+                                         ARCHERY_FONT_BODY,
+                                         is_clear ? (selected ? C_RED : C_MUTED) : C_TEXT);
             lv_obj_center(label);
             continue;
         }
-        const archery_record_t *record = archery_history_record(history, index);
+        const archery_record_t *record = archery_history_visible_record(
+            history, flow->history_filter, flow->clock_now, index);
         if (!record) continue;
         lv_obj_t *card = make_card(scr, rect, selected, false);
-        char seq_text[16];
-        snprintf(seq_text, sizeof(seq_text), "#%u", (unsigned)record->seq);
-        lv_obj_t *seq = make_label(card, seq_text, ARCHERY_FONT_BODY,
-                                   selected ? C_GOLD : C_MUTED);
-        lv_obj_align(seq, LV_ALIGN_LEFT_MID, 10, 0);
+        char when_text[16];
+        archery_clock_format_short(record->when, when_text, sizeof(when_text));
+        lv_obj_t *when = make_label(card, when_text, ARCHERY_FONT_NUMBER,
+                                    selected ? C_GOLD : C_MUTED);
+        lv_obj_align(when, LV_ALIGN_LEFT_MID, 8, 0);
 
-        char config[16];
-        snprintf(config, sizeof(config), "%u×%u", (unsigned)record->groups,
-                 (unsigned)record->arrows);
-        lv_obj_t *cfg = make_label(card, config, ARCHERY_FONT_BODY, C_MUTED);
-        lv_obj_align(cfg, LV_ALIGN_CENTER, -6, 0);
-
-        char total[24];
-        snprintf(total, sizeof(total), "%u 环",
+        char summary[24];
+        snprintf(summary, sizeof(summary), "#%u %u 环", (unsigned)record->seq,
                  (unsigned)archery_record_total_points(record));
-        lv_obj_t *sum = make_label(card, total, ARCHERY_FONT_BODY,
+        lv_obj_t *sum = make_label(card, summary, ARCHERY_FONT_BODY,
                                    selected ? C_GOLD : C_TEXT);
-        lv_obj_align(sum, LV_ALIGN_RIGHT_MID, -10, 0);
+        lv_obj_align(sum, LV_ALIGN_RIGHT_MID, -8, 0);
     }
-    add_hint(scr, "上/下 选择 · 确定 查看", 284);
+    add_hint(scr, "上/下 选择 · 确定 查看", 262);
+    add_hint(scr, "长按确定 切换筛选", 284);
 }
 
 static void render_detail(lv_obj_t *scr, const archery_flow_t *flow,
                           const archery_history_t *history) {
-    const archery_record_t *record =
-        archery_history_record(history, flow->history_cursor);
+    const archery_record_t *record = archery_history_visible_record(
+        history, flow->history_filter, flow->clock_now, flow->history_cursor);
     if (!record) {
         add_title(scr, "记录不可用");
         add_hint(scr, "确定 返回", 284);
@@ -477,15 +485,17 @@ static void render_detail(lv_obj_t *scr, const archery_flow_t *flow,
                               ? flow->detail_group : (uint8_t)(record->groups - 1u);
 
     char title[32];
-    snprintf(title, sizeof(title), "#%u 详情", (unsigned)record->seq);
+    snprintf(title, sizeof(title), "#%u %s", (unsigned)record->seq,
+             target_name(record->target));
     add_title(scr, title);
 
+    char when_text[16];
     char duration[16];
+    archery_clock_format_short(record->when, when_text, sizeof(when_text));
     format_duration(duration, sizeof(duration), record->duration_s);
     char line[72];
-    snprintf(line, sizeof(line), "%s · %u×%u · 用时 %s",
-             target_name(record->target), (unsigned)record->groups,
-             (unsigned)record->arrows, duration);
+    snprintf(line, sizeof(line), "%s · %u×%u · 用时 %s", when_text,
+             (unsigned)record->groups, (unsigned)record->arrows, duration);
     centered_label(scr, line, ARCHERY_FONT_BODY, C_MUTED, 36);
 
     snprintf(line, sizeof(line), "总 %u 环 · 内十 %u · 脱靶 %u",
@@ -531,20 +541,21 @@ static void render_detail(lv_obj_t *scr, const archery_flow_t *flow,
     add_hint(scr, "上/下 换组 · 确定 返回", 284);
 }
 
-// 设置：靶子类型 / 屏幕方向 / 亮度 / 息屏时间 / 返回。调整立即生效，离开时写 NVS。
+// 设置：靶子类型 / 屏幕方向 / 亮度 / 息屏时间 / 日期时间 / 返回。
+// 调整立即生效，离开时写 NVS；"日期时间"进入单独的手动对时页。
 static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
     add_title(scr, "设置");
 
     static const char *row_names[] = {"靶子类型", "屏幕方向", "屏幕亮度",
-                                      "息屏时间", "返回"};
+                                      "息屏时间", "日期时间", "返回"};
     char value[24];
     for (uint8_t row = 0; row < ARCHERY_SETTINGS_ROWS; row++) {
-        const archery_rect_t rect = {20, (int16_t)(66 + row * 36), 200, 32};
+        const archery_rect_t rect = {20, (int16_t)(58 + row * 32), 200, 28};
         const bool selected = flow->settings_row == row;
         lv_obj_t *card = make_card(scr, rect, selected, false);
         lv_obj_t *name = make_label(card, row_names[row], ARCHERY_FONT_BODY,
                                     selected ? C_GOLD : C_TEXT);
-        if (row < 4) {
+        if (row < 5) {
             lv_obj_align(name, LV_ALIGN_LEFT_MID, 12, 0);
             if (row == 0) {
                 snprintf(value, sizeof(value), "%s", target_name(flow->settings.target));
@@ -554,11 +565,15 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
             } else if (row == 2) {
                 snprintf(value, sizeof(value), "%u%%",
                          (unsigned)flow->settings.brightness);
-            } else if (flow->settings.off_seconds == 0) {
+            } else if (row == 3 && flow->settings.off_seconds == 0) {
                 snprintf(value, sizeof(value), "不息屏");
-            } else {
+            } else if (row == 3) {
                 snprintf(value, sizeof(value), "%u 秒",
                          (unsigned)flow->settings.off_seconds);
+            } else if (!flow->clock_set) {
+                snprintf(value, sizeof(value), "未校准");
+            } else {
+                archery_clock_format_short(flow->clock_now, value, sizeof(value));
             }
             lv_obj_t *number = make_label(card, value, ARCHERY_FONT_BODY,
                                           selected ? C_GOLD : C_TEXT);
@@ -569,6 +584,33 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
     }
     add_hint(scr, "上/下 调整 · 确定 下一项", 248);
     add_hint(scr, "长按确定 保存并返回", 274);
+}
+
+// 手动对时：年 / 月 / 日 / 时 / 分。设备没有 RTC 电池，断电后从上次时间继续。
+static void render_clock(lv_obj_t *scr, const archery_flow_t *flow) {
+    add_title(scr, "日期时间");
+    centered_label(scr, "断电后从上次时间继续", ARCHERY_FONT_BODY, C_MUTED, 36);
+
+    static const char *row_names[] = {"年", "月", "日", "时", "分"};
+    const uint16_t values[] = {
+        flow->clock_fields.year, flow->clock_fields.month, flow->clock_fields.day,
+        flow->clock_fields.hour, flow->clock_fields.minute,
+    };
+    char value[8];
+    for (uint8_t row = 0; row < ARCHERY_CLOCK_ROWS; row++) {
+        const archery_rect_t rect = {24, (int16_t)(60 + row * 38), 192, 34};
+        const bool selected = flow->clock_row == row;
+        lv_obj_t *card = make_card(scr, rect, selected, false);
+        lv_obj_t *name = make_label(card, row_names[row], ARCHERY_FONT_BODY,
+                                    selected ? C_GOLD : C_TEXT);
+        lv_obj_align(name, LV_ALIGN_LEFT_MID, 14, 0);
+        snprintf(value, sizeof(value), "%u", (unsigned)values[row]);
+        lv_obj_t *number = make_label(card, value, ARCHERY_FONT_TITLE,
+                                      selected ? C_GOLD : C_TEXT);
+        lv_obj_align(number, LV_ALIGN_RIGHT_MID, -16, 0);
+    }
+    add_hint(scr, "上/下 调整 · 确定 下一项", 254);
+    add_hint(scr, "长按确定 保存并返回", 280);
 }
 
 static void render_confirm(lv_obj_t *scr, const archery_flow_t *flow,
@@ -629,6 +671,7 @@ void archery_ui_show(const archery_flow_t *flow, const archery_history_t *histor
     case ARCHERY_PAGE_CLEAR_CONFIRM: render_confirm(scr, flow, history, false); break;
     case ARCHERY_PAGE_ABORT_CONFIRM: render_confirm(scr, flow, history, true); break;
     case ARCHERY_PAGE_SETTINGS: render_settings(scr, flow); break;
+    case ARCHERY_PAGE_CLOCK: render_clock(scr, flow); break;
     }
     add_battery(scr, battery_soc);
     lv_screen_load(scr);

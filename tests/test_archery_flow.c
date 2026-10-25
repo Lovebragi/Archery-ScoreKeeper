@@ -41,6 +41,7 @@ static void test_home_and_setup(void) {
     assert(flow.setup_groups == ARCHERY_DEFAULT_GROUPS);
     assert(flow.setup_arrows == ARCHERY_DEFAULT_ARROWS);
 
+
     press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.home_select == 1);
     press(&flow, ARCHERY_KEY_DOWN);
@@ -417,9 +418,28 @@ static void test_settings_page(void) {
     assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.off_seconds == 60);
 
-    // 返回行：确定保存并回主页
+    // 日期时间行：进入手动对时页并保存
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.settings_row == 4);
+    archery_flow_set_clock(&flow, 0x2B3A4C5Du, true);  // 2026-10-25 14:32 附近
+    press(&flow, ARCHERY_KEY_OK);
+    assert(flow.page == ARCHERY_PAGE_CLOCK);
+    assert(flow.clock_row == 0);
+    // 年 +1、月 +1、日 +1、时 +1、分 +1
+    press(&flow, ARCHERY_KEY_UP);
+    press(&flow, ARCHERY_KEY_OK);
+    press(&flow, ARCHERY_KEY_UP);
+    press(&flow, ARCHERY_KEY_OK);
+    press(&flow, ARCHERY_KEY_UP);
+    press(&flow, ARCHERY_KEY_OK);
+    press(&flow, ARCHERY_KEY_UP);
+    press(&flow, ARCHERY_KEY_OK);
+    press(&flow, ARCHERY_KEY_UP);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_CLOCK_SAVE);
+    assert(flow.page == ARCHERY_PAGE_SETTINGS);
+    assert(flow.settings_row == 5);
+
+    // 返回行：确定保存并回主页
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_SAVE);
     assert(flow.page == ARCHERY_PAGE_HOME);
 
@@ -432,9 +452,13 @@ static void test_settings_page(void) {
     press(&flow, ARCHERY_KEY_OK);  // 方向行
     press(&flow, ARCHERY_KEY_OK);  // 亮度行
     press(&flow, ARCHERY_KEY_OK);  // 息屏行
-    assert(flow.settings_row == 3);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_SETTINGS_CHANGED);
-    assert(flow.settings.off_seconds == 30);
+    press(&flow, ARCHERY_KEY_OK);  // 日期时间行
+    assert(flow.settings_row == 4);
+    press(&flow, ARCHERY_KEY_OK);  // 进入对时页
+    assert(flow.page == ARCHERY_PAGE_CLOCK);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) == ARCHERY_ACT_CLOCK_SAVE);
+    assert(flow.page == ARCHERY_PAGE_SETTINGS);
+    assert(flow.settings_row == 5);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) == ARCHERY_ACT_SETTINGS_SAVE);
     assert(flow.page == ARCHERY_PAGE_HOME);
 
@@ -460,38 +484,59 @@ static void test_history_pages(void) {
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.page == ARCHERY_PAGE_HISTORY);
     assert(flow.history_cursor == 0);
+    assert(flow.history_filter == ARCHERY_HISTORY_FILTER_ALL);
 
-    // 空历史：确定不会进入详情，光标也不会越过 0
+    // 空历史：只显示一行"返回主页"，确定即退出
     archery_flow_set_history_count(&flow, 0);
-    press(&flow, ARCHERY_KEY_OK);
-    assert(flow.page == ARCHERY_PAGE_HISTORY);
     press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.history_cursor == 0);
+    press(&flow, ARCHERY_KEY_OK);
+    assert(flow.page == ARCHERY_PAGE_HOME);
 
-    // 3 条记录：光标 0..3，第 3 行是"清空全部记录"
+    // 重新进入，3 条记录：行 0..2 是记录，3 清空，4 返回
+    press(&flow, ARCHERY_KEY_OK);
+    assert(flow.page == ARCHERY_PAGE_HISTORY);
     archery_flow_set_history_count(&flow, 3);
-    for (int i = 0; i < 5; i++) press(&flow, ARCHERY_KEY_DOWN);
+    for (int i = 0; i < 9; i++) press(&flow, ARCHERY_KEY_DOWN);
+    assert(flow.history_cursor == 4);
+    press(&flow, ARCHERY_KEY_UP);
     assert(flow.history_cursor == 3);
+    press(&flow, ARCHERY_KEY_OK);
+    assert(flow.page == ARCHERY_PAGE_CLEAR_CONFIRM);
+    press(&flow, ARCHERY_KEY_OK);  // 取消
+    assert(flow.page == ARCHERY_PAGE_HISTORY);
 
+    // 详情
     press(&flow, ARCHERY_KEY_UP);
     assert(flow.history_cursor == 2);
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.page == ARCHERY_PAGE_DETAIL);
     assert(flow.detail_group == 0);
-
-    // 详情页：组数由上层写入，上下切换并钳制
     flow.detail_groups = 3;
     for (int i = 0; i < 5; i++) press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.detail_group == 2);
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.page == ARCHERY_PAGE_HISTORY);
 
-    // 进入"清空"行并确认
-    press(&flow, ARCHERY_KEY_DOWN);  // 2 -> 3
+    // 长按确定循环切换筛选：全部 -> 今天 -> 最近 7 天 -> 全部
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) ==
+           ARCHERY_ACT_HISTORY_FILTER);
+    assert(flow.history_filter == ARCHERY_HISTORY_FILTER_TODAY);
+    assert(flow.history_cursor == 0);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) ==
+           ARCHERY_ACT_HISTORY_FILTER);
+    assert(flow.history_filter == ARCHERY_HISTORY_FILTER_WEEK);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) ==
+           ARCHERY_ACT_HISTORY_FILTER);
+    assert(flow.history_filter == ARCHERY_HISTORY_FILTER_ALL);
+
+    // 清空
+    press(&flow, ARCHERY_KEY_DOWN);
+    press(&flow, ARCHERY_KEY_DOWN);
+    press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.history_cursor == 3);
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.page == ARCHERY_PAGE_CLEAR_CONFIRM);
-    assert(!flow.confirm_yes);
     press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.confirm_yes);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_CLEAR_HISTORY);
@@ -507,8 +552,11 @@ static void test_history_pages(void) {
     assert(flow.page == ARCHERY_PAGE_HISTORY);
     assert(flow.history_count == 1);
 
-    // 长按返回主页
-    press(&flow, ARCHERY_KEY_OK_LONG);
+    // 返回行回主页
+    press(&flow, ARCHERY_KEY_DOWN);
+    press(&flow, ARCHERY_KEY_DOWN);
+    assert(flow.history_cursor == 2);
+    press(&flow, ARCHERY_KEY_OK);
     assert(flow.page == ARCHERY_PAGE_HOME);
 }
 

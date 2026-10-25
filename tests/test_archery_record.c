@@ -35,7 +35,7 @@ static void test_round_trip(void) {
         archery_session_t session;
         fill_session(&session, groups_list[i], arrows_list[i]);
         archery_record_t record;
-        archery_record_from_session(&record, &session, 7, 125);
+        archery_record_from_session(&record, &session, 7, 125, 0x5A5A1234u);
         assert(record.seq == 7);
         assert(record.duration_s == 125);
 
@@ -50,6 +50,7 @@ static void test_round_trip(void) {
         assert(decoded.duration_s == record.duration_s);
         assert(decoded.groups == record.groups);
         assert(decoded.target == record.target);
+        assert(decoded.when == record.when);
         assert(decoded.arrows == record.arrows);
         assert(archery_record_total_points(&decoded) ==
                archery_record_total_points(&record));
@@ -66,7 +67,7 @@ static void test_totals_match_session(void) {
     archery_session_t session;
     fill_session(&session, 3, 4);
     archery_record_t record;
-    archery_record_from_session(&record, &session, 1, 60);
+    archery_record_from_session(&record, &session, 1, 60, 0);
 
     assert(archery_record_total_points(&record) ==
            archery_session_total_points(&session));
@@ -100,7 +101,7 @@ static void test_corruption_detected(void) {
     archery_session_t session;
     fill_session(&session, 2, 3);
     archery_record_t record;
-    archery_record_from_session(&record, &session, 2, 30);
+    archery_record_from_session(&record, &session, 2, 30, 1234567u);
 
     uint8_t buffer[ARCHERY_RECORD_BUFFER_BYTES];
     const size_t length = archery_record_encode(&record, buffer, sizeof(buffer));
@@ -152,7 +153,7 @@ static void test_v1_record_compatibility(void) {
     archery_session_t session;
     fill_session(&session, 1, 2);
     archery_record_t record;
-    archery_record_from_session(&record, &session, 5, 60);
+    archery_record_from_session(&record, &session, 5, 60, 0);
 
     uint8_t old[ARCHERY_RECORD_BUFFER_BYTES];
     const size_t score_bytes = 1;  // (1*2+1)/2
@@ -184,27 +185,27 @@ static void test_history_meta_and_slots(void) {
     archery_history_meta_init(&meta);
     assert(meta.count == 0 && meta.next_seq == 1);
     assert(archery_history_seq_newest(&meta, 0) == 0);
-    assert(archery_history_slot_for_seq(0) == 0xFF);
+    assert(archery_history_slot_for_seq(0) == ARCHERY_HISTORY_SLOT_INVALID);
 
     assert(archery_history_slot_for_seq(1) == 0);
-    assert(archery_history_slot_for_seq(50) == 49);
-    assert(archery_history_slot_for_seq(51) == 0);  // 回绕覆盖最旧记录
+    assert(archery_history_slot_for_seq(300) == 299);
+    assert(archery_history_slot_for_seq(301) == 0);  // 回绕覆盖最旧记录
 
-    for (int i = 0; i < 50; i++) archery_history_meta_after_save(&meta);
-    assert(meta.count == 50);
-    assert(meta.next_seq == 51);
-    // 第 0 新 = seq 50，槽位 49；第 49 新 = seq 1，槽位 0
-    assert(archery_history_seq_newest(&meta, 0) == 50);
-    assert(archery_history_seq_newest(&meta, 49) == 1);
-    assert(archery_history_seq_newest(&meta, 50) == 0);
+    for (int i = 0; i < 300; i++) archery_history_meta_after_save(&meta);
+    assert(meta.count == 300);
+    assert(meta.next_seq == 301);
+    // 第 0 新 = seq 300，槽位 299；第 299 新 = seq 1，槽位 0
+    assert(archery_history_seq_newest(&meta, 0) == 300);
+    assert(archery_history_seq_newest(&meta, 299) == 1);
+    assert(archery_history_seq_newest(&meta, 300) == 0);
 
-    // 超过 50 次后只保留最近 50 条，序号继续增长
+    // 超过容量后只保留最近 300 条，序号继续增长
     for (int i = 0; i < 10; i++) archery_history_meta_after_save(&meta);
-    assert(meta.count == 50);
-    assert(meta.next_seq == 61);
-    assert(archery_history_seq_newest(&meta, 0) == 60);
-    assert(archery_history_seq_newest(&meta, 49) == 11);
-    assert(archery_history_seq_newest(&meta, 50) == 0);
+    assert(meta.count == 300);
+    assert(meta.next_seq == 311);
+    assert(archery_history_seq_newest(&meta, 0) == 310);
+    assert(archery_history_seq_newest(&meta, 299) == 11);
+    assert(archery_history_seq_newest(&meta, 300) == 0);
 }
 
 int main(void) {

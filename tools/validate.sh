@@ -62,7 +62,7 @@ run_static_checks() {
         -o "${test_dir}/test_archery_session"
     "${test_dir}/test_archery_session"
     "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
-        tests/test_archery_flow.c main/archery_score.c main/archery_session.c \
+        tests/test_archery_flow.c main/archery_score.c main/archery_session.c main/archery_clock.c \
         main/archery_settings.c main/archery_flow.c -o "${test_dir}/test_archery_flow"
     "${test_dir}/test_archery_flow"
     "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
@@ -70,13 +70,17 @@ run_static_checks() {
         -o "${test_dir}/test_archery_settings"
     "${test_dir}/test_archery_settings"
     "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
-        tests/test_archery_record.c main/archery_score.c main/archery_session.c \
+        tests/test_archery_record.c main/archery_score.c main/archery_session.c main/archery_clock.c \
         main/archery_history.c -o "${test_dir}/test_archery_record"
     "${test_dir}/test_archery_record"
     "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
         tests/test_archery_layout.c main/archery_layout.c \
         -o "${test_dir}/test_archery_layout"
     "${test_dir}/test_archery_layout"
+    "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
+        tests/test_archery_clock.c main/archery_clock.c \
+        -o "${test_dir}/test_archery_clock"
+    "${test_dir}/test_archery_clock"
     PYTHONDONTWRITEBYTECODE=1 python3 tests/test_archery_fonts.py
     for demo in audio low_power ble wifi; do
         "${CC:-cc}" -std=c11 -Wall -Wextra -Werror \

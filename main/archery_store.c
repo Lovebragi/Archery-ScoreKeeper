@@ -11,9 +11,13 @@ static const char *TAG = "archery_store";
 static const char *NVS_NAMESPACE = "archery";
 static const char *META_KEY = "meta";
 static const char *SETTINGS_KEY = "cfg";
+static const char *CLOCK_KEY = "clk";
+static const char *SCHEMA_KEY = "schema";
+#define STORE_SCHEMA 2u
+#define CLOCK_MAGIC 0xC1u
 
-static void slot_key(char *buffer, size_t size, uint8_t slot) {
-    snprintf(buffer, size, "s%02u", (unsigned)slot);
+static void slot_key(char *buffer, size_t size, uint16_t slot) {
+    snprintf(buffer, size, "s%03u", (unsigned)slot);
 }
 
 static esp_err_t open_nvs(nvs_handle_t *handle) {
@@ -29,6 +33,33 @@ static void history_clear_memory(archery_history_t *history) {
     archery_history_meta_init(&history->meta);
 }
 
+static uint16_t crc16_ccitt(const uint8_t *data, size_t length) {
+    uint16_t crc = 0xFFFFu;
+    for (size_t i = 0; i < length; i++) {
+        crc ^= (uint16_t)((uint16_t)data[i] << 8);
+        for (int bit = 0; bit < 8; bit++) {
+            crc = (crc & 0x8000u) ? (uint16_t)((crc << 1) ^ 0x1021u) : (uint16_t)(crc << 1);
+        }
+    }
+    return crc;
+}
+
+// 分区表扩到 256 KB、记录格式升到 v3 后，旧 NVS 内容不再可靠：首次启动时
+// 整体清空一次，之后靠 schema 标记判断。
+static esp_err_t ensure_schema(nvs_handle_t handle) {
+    uint8_t value = 0;
+    esp_err_t err = nvs_get_u8(handle, SCHEMA_KEY, &value);
+    if (err == ESP_OK && value == STORE_SCHEMA) return ESP_OK;
+    ESP_LOGW(TAG, "存储布局升级，清空一次 NVS（历史/设置/时钟将重置）");
+    err = nvs_erase_all(handle);
+    if (err == ESP_OK) err = nvs_set_u8(handle, SCHEMA_KEY, STORE_SCHEMA);
+    if (err == ESP_OK) err = nvs_commit(handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "初始化存储布局失败: %s", esp_err_to_name(err));
+    }
+    return err;
+}
+
 esp_err_t archery_store_load(archery_history_t *history) {
     if (!history) return ESP_ERR_INVALID_ARG;
     history_clear_memory(history);
@@ -37,6 +68,11 @@ esp_err_t archery_store_load(archery_history_t *history) {
     esp_err_t err = open_nvs(&handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "打开 NVS 命名空间失败: %s", esp_err_to_name(err));
+        return err;
+    }
+    err = ensure_schema(handle);
+    if (err != ESP_OK) {
+        nvs_close(handle);
         return err;
     }
 
@@ -56,7 +92,7 @@ esp_err_t archery_store_load(archery_history_t *history) {
 
     uint8_t buffer[ARCHERY_RECORD_BUFFER_BYTES];
     uint16_t max_seq = 0;
-    for (uint8_t slot = 0; slot < ARCHERY_HISTORY_CAPACITY; slot++) {
+    for (uint16_t slot = 0; slot < ARCHERY_HISTORY_CAPACITY; slot++) {
         char key[8];
         slot_key(key, sizeof(key), slot);
         size_t length = sizeof(buffer);
@@ -87,8 +123,8 @@ esp_err_t archery_store_load(archery_history_t *history) {
     for (uint16_t i = 0; i < ARCHERY_HISTORY_CAPACITY; i++) {
         const uint16_t seq = archery_history_seq_newest(&meta, i);
         if (seq == 0) break;
-        const uint8_t slot = archery_history_slot_for_seq(seq);
-        if (slot == 0xFFu || history->records[slot].seq != seq) break;
+        const uint16_t slot = archery_history_slot_for_seq(seq);
+        if (slot == ARCHERY_HISTORY_SLOT_INVALID || history->records[slot].seq != seq) break;
         count++;
     }
     if (meta.count != count) {
@@ -121,8 +157,8 @@ esp_err_t archery_store_save(archery_history_t *history, const archery_record_t 
     const size_t length = archery_record_encode(&stored, buffer, sizeof(buffer));
     if (length == 0) return ESP_ERR_INVALID_ARG;
 
-    const uint8_t slot = archery_history_slot_for_seq(stored.seq);
-    if (slot == 0xFFu) return ESP_ERR_INVALID_STATE;
+    const uint16_t slot = archery_history_slot_for_seq(stored.seq);
+    if (slot == ARCHERY_HISTORY_SLOT_INVALID) return ESP_ERR_INVALID_STATE;
 
     nvs_handle_t handle;
     esp_err_t err = open_nvs(&handle);
@@ -156,7 +192,15 @@ esp_err_t archery_store_clear(archery_history_t *history) {
     nvs_handle_t handle;
     esp_err_t err = open_nvs(&handle);
     if (err != ESP_OK) return err;
-    err = nvs_erase_all(handle);
+    // 只删记录与 meta，保留设置、时钟和 schema 标记。
+    char key[8];
+    for (uint16_t slot = 0; slot < ARCHERY_HISTORY_CAPACITY; slot++) {
+        slot_key(key, sizeof(key), slot);
+        const esp_err_t erase_err = nvs_erase_key(handle, key);
+        if (erase_err != ESP_OK && erase_err != ESP_ERR_NVS_NOT_FOUND && err == ESP_OK) {
+            err = erase_err;
+        }
+    }
     if (err == ESP_OK) {
         archery_history_meta_t meta;
         archery_history_meta_init(&meta);
@@ -176,10 +220,80 @@ const archery_record_t *archery_history_record(const archery_history_t *history,
     if (!history) return NULL;
     const uint16_t seq = archery_history_seq_newest(&history->meta, newest_index);
     if (seq == 0) return NULL;
-    const uint8_t slot = archery_history_slot_for_seq(seq);
-    if (slot == 0xFFu) return NULL;
+    const uint16_t slot = archery_history_slot_for_seq(seq);
+    if (slot == ARCHERY_HISTORY_SLOT_INVALID) return NULL;
     const archery_record_t *record = &history->records[slot];
     return record->seq == seq ? record : NULL;
+}
+
+uint16_t archery_history_visible_count(const archery_history_t *history,
+                                       uint8_t filter, uint32_t now) {
+    if (!history) return 0;
+    uint16_t count = 0;
+    for (uint16_t i = 0; i < history->meta.count; i++) {
+        const archery_record_t *record = archery_history_record(history, i);
+        if (record && archery_clock_matches_filter(record->when, filter, now)) count++;
+    }
+    return count;
+}
+
+const archery_record_t *archery_history_visible_record(const archery_history_t *history,
+                                                       uint8_t filter, uint32_t now,
+                                                       uint16_t index) {
+    if (!history) return NULL;
+    uint16_t matched = 0;
+    for (uint16_t i = 0; i < history->meta.count; i++) {
+        const archery_record_t *record = archery_history_record(history, i);
+        if (!record || !archery_clock_matches_filter(record->when, filter, now)) continue;
+        if (matched == index) return record;
+        matched++;
+    }
+    return NULL;
+}
+
+esp_err_t archery_store_clock_load(uint32_t *seconds, bool *time_set) {
+    if (!seconds || !time_set) return ESP_ERR_INVALID_ARG;
+    *seconds = 0;
+    *time_set = false;
+
+    nvs_handle_t handle;
+    esp_err_t err = open_nvs(&handle);
+    if (err != ESP_OK) return err;
+    uint8_t buffer[9];
+    size_t length = sizeof(buffer);
+    err = nvs_get_blob(handle, CLOCK_KEY, buffer, &length);
+    if (err == ESP_OK && length == sizeof(buffer) && buffer[0] == CLOCK_MAGIC) {
+        const uint16_t expected = (uint16_t)(buffer[7] | ((uint16_t)buffer[8] << 8));
+        if (crc16_ccitt(buffer, 7) == expected) {
+            *seconds = (uint32_t)buffer[2] | ((uint32_t)buffer[3] << 8) |
+                       ((uint32_t)buffer[4] << 16) | ((uint32_t)buffer[5] << 24);
+            *time_set = (buffer[1] & 0x01u) != 0;
+        }
+    }
+    nvs_close(handle);
+    return ESP_OK;
+}
+
+esp_err_t archery_store_clock_save(uint32_t seconds, bool time_set) {
+    uint8_t buffer[9];
+    buffer[0] = CLOCK_MAGIC;
+    buffer[1] = time_set ? 0x01u : 0x00u;
+    buffer[2] = (uint8_t)(seconds & 0xFFu);
+    buffer[3] = (uint8_t)((seconds >> 8) & 0xFFu);
+    buffer[4] = (uint8_t)((seconds >> 16) & 0xFFu);
+    buffer[5] = (uint8_t)((seconds >> 24) & 0xFFu);
+    buffer[6] = 0;
+    const uint16_t crc = crc16_ccitt(buffer, 7);
+    buffer[7] = (uint8_t)(crc & 0xFFu);
+    buffer[8] = (uint8_t)(crc >> 8);
+
+    nvs_handle_t handle;
+    esp_err_t err = open_nvs(&handle);
+    if (err != ESP_OK) return err;
+    err = nvs_set_blob(handle, CLOCK_KEY, buffer, sizeof(buffer));
+    if (err == ESP_OK) err = nvs_commit(handle);
+    nvs_close(handle);
+    return err;
 }
 
 esp_err_t archery_settings_load(archery_settings_t *settings) {

@@ -54,8 +54,44 @@ static volatile bool s_rotate_keys = (ARCHERY_SETTINGS_DEFAULT_ROTATE != 0);
 // 按键唤醒后，那颗键在整个启动期间还按着；在它松手前丢弃按键动作，
 // 避免把"唤醒键仍在按"误判成长按。
 static key_guard_t s_key_guard;
+// 墙上时钟：基准时间 + 单调计时器。设备没有 RTC 电池，断电后时间从上次保存
+// 的时刻继续；设置页可手动校准。
+static uint32_t s_clock_base;
+static int64_t s_clock_base_us;
+static bool s_clock_set;
+static uint32_t s_clock_saved;
+static int64_t s_next_clock_save_us;
+static uint32_t s_session_when;
+
+static uint32_t clock_now(void) {
+    const int64_t elapsed = esp_timer_get_time() - s_clock_base_us;
+    if (elapsed <= 0) return s_clock_base;
+    return s_clock_base + (uint32_t)(elapsed / 1000000);
+}
+
+static void clock_set_to(uint32_t seconds) {
+    s_clock_base = seconds;
+    s_clock_base_us = esp_timer_get_time();
+    s_clock_set = seconds != 0;
+}
+
+// 首次开机没有保存过时间时，用固件编译时间做近似种子（比 1970 年更接近真实）。
+static uint32_t clock_build_seed(void) {
+    archery_datetime_t dt;
+    if (!archery_clock_parse_build(__DATE__, __TIME__, &dt)) return 0;
+    return archery_datetime_to_seconds(&dt);
+}
+
+static void clock_persist(bool force) {
+    const uint32_t now = clock_now();
+    if (!force && now <= s_clock_saved + 60u) return;
+    if (archery_store_clock_save(now, s_clock_set) == ESP_OK) {
+        s_clock_saved = now;
+    }
+}
 
 static void redraw(void) {
+    archery_flow_set_clock(&s_flow, clock_now(), s_clock_set);
     if (!bsp_lvgl_lock(500)) {
         ESP_LOGW(TAG, "获取 LVGL 锁超时，跳过本次重绘");
         return;
@@ -73,12 +109,19 @@ static void refresh_battery(void) {
 
 static void sync_detail_group(void) {
     if (s_flow.page != ARCHERY_PAGE_DETAIL) return;
-    const archery_record_t *record =
-        archery_history_record(&s_history, s_flow.history_cursor);
+    const archery_record_t *record = archery_history_visible_record(
+        &s_history, s_flow.history_filter, clock_now(), s_flow.history_cursor);
     s_flow.detail_groups = record ? record->groups : 1;
     if (s_flow.detail_group >= s_flow.detail_groups) {
         s_flow.detail_group = (uint8_t)(s_flow.detail_groups - 1u);
     }
+}
+
+// 按当前筛选重新统计可见条数，并让 flow 的光标保持在范围内。
+static void refresh_history_count(void) {
+    const uint16_t count =
+        archery_history_visible_count(&s_history, s_flow.history_filter, clock_now());
+    archery_flow_set_history_count(&s_flow, count);
 }
 
 static void apply_settings(const archery_settings_t *settings) {
@@ -97,25 +140,28 @@ static void handle_key(archery_key_t key) {
     switch (action) {
     case ARCHERY_ACT_SESSION_START:
         s_session_start_us = esp_timer_get_time();
+        s_session_when = clock_now();
         break;
     case ARCHERY_ACT_SAVE_RECORD: {
         const int64_t elapsed_us = esp_timer_get_time() - s_session_start_us;
         uint32_t seconds = elapsed_us > 0 ? (uint32_t)(elapsed_us / 1000000) : 0u;
         if (seconds > UINT16_MAX) seconds = UINT16_MAX;
         archery_record_t record;
-        archery_record_from_session(&record, &s_flow.session, 0, (uint16_t)seconds);
+        archery_record_from_session(&record, &s_flow.session, 0, (uint16_t)seconds,
+                                    s_session_when);
         if (archery_store_save(&s_history, &record) != ESP_OK) {
             s_flow.save_failed = true;
             ESP_LOGE(TAG, "训练记录写入失败");
         }
-        archery_flow_set_history_count(&s_flow, s_history.meta.count);
+        clock_persist(false);
+        refresh_history_count();
         break;
     }
     case ARCHERY_ACT_CLEAR_HISTORY:
         if (archery_store_clear(&s_history) != ESP_OK) {
             ESP_LOGE(TAG, "清空历史失败，保留原有记录");
         }
-        archery_flow_set_history_count(&s_flow, s_history.meta.count);
+        refresh_history_count();
         break;
     case ARCHERY_ACT_SETTINGS_CHANGED:
         apply_settings(&s_flow.settings);
@@ -126,6 +172,19 @@ static void handle_key(archery_key_t key) {
             ESP_LOGE(TAG, "设置保存失败");
         }
         break;
+    case ARCHERY_ACT_CLOCK_SAVE: {
+        const uint32_t seconds = archery_datetime_to_seconds(&s_flow.clock_fields);
+        if (seconds != 0) {
+            clock_set_to(seconds);
+            clock_persist(true);
+            archery_flow_set_clock(&s_flow, seconds, true);
+        }
+        break;
+    }
+    case ARCHERY_ACT_HISTORY_FILTER:
+        refresh_history_count();
+        break;
+
     case ARCHERY_ACT_NONE:
         break;
     }
@@ -252,6 +311,11 @@ static void worker_task(void *argument) {
             refresh_battery();
             s_next_battery_us = now + (int64_t)BATTERY_POLL_MS * 1000;
         }
+        if (now >= s_next_clock_save_us) {
+            // 每 5 分钟把时钟基准写一次 NVS；写入内容很小，磨损可忽略。
+            clock_persist(false);
+            s_next_clock_save_us = now + (int64_t)300 * 1000000;
+        }
         const uint16_t off_seconds = s_flow.settings.off_seconds;
         if (off_seconds > 0 &&
             now - s_last_input_us >= (int64_t)off_seconds * 1000000) {
@@ -267,6 +331,13 @@ void archery_app_start(void) {
     }
 
     archery_flow_init(&s_flow);
+
+    if (archery_store_load(&s_history) != ESP_OK) {
+        ESP_LOGW(TAG, "历史记录载入失败，从空历史开始");
+        memset(&s_history, 0, sizeof(s_history));
+        archery_history_meta_init(&s_history.meta);
+    }
+
     archery_settings_t stored;
     if (archery_settings_load(&stored) != ESP_OK) {
         ESP_LOGW(TAG, "设置读取失败，使用默认亮度/息屏时间");
@@ -274,16 +345,24 @@ void archery_app_start(void) {
     archery_flow_set_settings(&s_flow, &stored);
     apply_settings(&s_flow.settings);
 
-    if (archery_store_load(&s_history) != ESP_OK) {
-        ESP_LOGW(TAG, "历史记录载入失败，从空历史开始");
-        memset(&s_history, 0, sizeof(s_history));
-        archery_history_meta_init(&s_history.meta);
+    // 时钟：优先用上次保存的时间；没有就用固件编译时间近似。
+    uint32_t saved_clock = 0;
+    bool saved_set = false;
+    if (archery_store_clock_load(&saved_clock, &saved_set) != ESP_OK || saved_clock == 0) {
+        saved_clock = clock_build_seed();
+        saved_set = false;
     }
-    archery_flow_set_history_count(&s_flow, s_history.meta.count);
+    s_clock_base = saved_clock;
+    s_clock_base_us = esp_timer_get_time();
+    s_clock_set = saved_set;
+    s_clock_saved = saved_clock;
+    s_next_clock_save_us = s_clock_base_us + (int64_t)300 * 1000000;
+    archery_flow_set_clock(&s_flow, clock_now(), s_clock_set);
 
     s_battery_soc = bsp_battery_soc();
     s_session_start_us = esp_timer_get_time();
     s_last_input_us = s_session_start_us;
+    refresh_history_count();
 
     redraw();
 

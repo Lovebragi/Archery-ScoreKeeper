@@ -8,6 +8,20 @@ Release history for the archery scorekeeper application. The repository-wide
 [changelog](../CHANGELOG.md) tracks the AI Passport project itself; this file
 follows the application's firmware versions.
 
+## 1.2.0 — 2026-10-25
+
+### Added
+
+- Download the full training history as a UTF-8 CSV from the phone setup page at
+  `192.168.4.1`. One row per session covers date, target, groups, arrows,
+  score, average, inner tens, misses and per-ring totals, ready for Excel.
+- Show the firmware version in the top-left corner.
+
+### Changed
+
+- The Wi-Fi menu entry is now "Phone setup / export"; the setup page offers the
+  CSV download next to the network configuration.
+
 ## 1.1.0 — 2026-10-25
 
 ### Added

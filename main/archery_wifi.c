@@ -40,6 +40,7 @@ static bool s_time_ready;
 static uint32_t s_synced_time;
 static char s_ip[16];
 static httpd_handle_t s_httpd;
+static const archery_history_t *s_history;
 static TaskHandle_t s_dns_task;
 static volatile bool s_dns_run;
 
@@ -276,7 +277,10 @@ static const char *PROV_HTML =
     "border:1px solid #2a352f;background:#16201b;color:#f2f1ea;font-size:16px}button{background:#1d3328;"
     "border-color:#e8c063;color:#e8c063;font-weight:bold}li{padding:10px;margin:4px 0;background:#16201b;"
     "border-radius:8px;list-style:none;cursor:pointer}li:active{outline:1px solid #e8c063}.muted{color:#8a8f87;font-size:14px}"
+    ".dl{display:block;text-align:center;padding:12px;margin:8px 0;background:#1d3328;"
+    "border:1px solid #e8c063;border-radius:8px;color:#e8c063;text-decoration:none;font-weight:bold}"
     "</style><h2>连接 Wi-Fi</h2><div class=muted>点选下面的网络，输入密码后连接；成功后设备会自动对时。</div>"
+    "<a class=dl href='/history.csv'>下载训练记录（CSV，可用 Excel 打开）</a>"
     "<ul id=list><li>扫描中…</li></ul><button onclick=refresh(1)>刷新网络</button>"
     "<input id=ssid placeholder='Wi-Fi 名称'><input id=pass type=password placeholder='Wi-Fi 密码'>"
     "<button onclick=go()>连接</button><div id=msg class=muted style='margin-top:12px'></div><script>"
@@ -418,6 +422,32 @@ static esp_err_t http_index(httpd_req_t *req) {
     return httpd_resp_sendstr(req, PROV_HTML);
 }
 
+static esp_err_t http_history_csv(httpd_req_t *req) {
+    httpd_resp_set_type(req, "text/csv; charset=utf-8");
+    httpd_resp_set_hdr(req, "Content-Disposition",
+                       "attachment; filename=\"archery-history.csv\"");
+    // Excel 识别 UTF-8 需要 BOM。
+    httpd_resp_send_chunk(req, "\xEF\xBB\xBF", 3);
+    const char *header = archery_record_csv_header();
+    httpd_resp_send_chunk(req, header, strlen(header));
+
+    char line[256];
+    uint16_t count = 0;
+    if (s_history) {
+        count = archery_history_visible_count(s_history, ARCHERY_HISTORY_FILTER_ALL, 0);
+    }
+    for (uint16_t i = 0; i < count; i++) {
+        const archery_record_t *record =
+            archery_history_visible_record(s_history, ARCHERY_HISTORY_FILTER_ALL, 0, i);
+        if (!record) continue;
+        const size_t length =
+            archery_record_csv_row(record, (uint16_t)(i + 1u), line, sizeof(line));
+        if (length > 0) httpd_resp_send_chunk(req, line, length);
+    }
+    httpd_resp_send_chunk(req, NULL, 0);
+    return ESP_OK;
+}
+
 static void start_httpd(void) {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_uri_handlers = 12;
@@ -434,11 +464,14 @@ static void start_httpd(void) {
     const httpd_uri_t connect_uri = {.uri = "/connect", .method = HTTP_POST,
                                      .handler = http_connect};
     const httpd_uri_t diag_uri = {.uri = "/diag", .method = HTTP_GET, .handler = http_diag};
+    const httpd_uri_t csv_uri = {.uri = "/history.csv", .method = HTTP_GET,
+                                 .handler = http_history_csv};
     httpd_register_uri_handler(s_httpd, &index_uri);
     httpd_register_uri_handler(s_httpd, &scan_uri);
     httpd_register_uri_handler(s_httpd, &status_uri);
     httpd_register_uri_handler(s_httpd, &connect_uri);
     httpd_register_uri_handler(s_httpd, &diag_uri);
+    httpd_register_uri_handler(s_httpd, &csv_uri);
     // iOS/Android 的联网探测：跳转到配网页，手机才会自动弹出登录页。
     static const char *probe_paths[] = {"/hotspot-detect.html", "/generate_204",
                                         "/connecttest.txt", "/ncsi.txt"};
@@ -561,6 +594,10 @@ esp_err_t archery_wifi_stop_provisioning(void) {
     notify();
     ESP_LOGI(TAG, "配网热点已关闭");
     return ESP_OK;
+}
+
+void archery_wifi_set_history(const archery_history_t *history) {
+    s_history = history;
 }
 
 // ---------------------------------------------------------------- 初始化

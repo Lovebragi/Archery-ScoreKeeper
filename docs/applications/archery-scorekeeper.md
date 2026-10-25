@@ -103,6 +103,22 @@ more OK instead of walking through the remaining empty rows.
   after connecting to Wi-Fi. History filters use that clock, and unknown times
   show `--`.
 
+## Exporting history
+
+The Network page hands the full history to a phone or computer without extra
+software:
+
+1. Open **Network -> Phone setup / export**. The device starts the open
+   `Archery-Setup` hotspot and shows a QR code.
+2. Join `Archery-Setup` and open `http://192.168.4.1/`.
+3. Choose **Download training records (CSV)**.
+
+The file is UTF-8 with a BOM and one row per session: date, time, target,
+groups, arrows per group, total arrows, total score, average, inner tens,
+misses, then the arrow count for X, 10, ... 0. It opens directly in Excel. The
+export uses the same temporary hotspot as provisioning, so the device does not
+need to be connected to a router.
+
 ## Fonts
 
 Digits use LVGL's Montserrat 20 and 40. Chinese text uses a Noto Sans SC subset

@@ -1,6 +1,7 @@
 // main/archery_history.c —— 记录编码与环形槽位实现。
 #include "archery_history.h"
 
+#include <stdio.h>
 #include <string.h>
 
 // CRC-16/CCITT-FALSE（poly 0x1021, init 0xFFFF）：只用于识别 Flash 中的
@@ -251,4 +252,62 @@ bool archery_record_decode(archery_record_t *record,
     }
     *record = decoded;
     return true;
+}
+
+const char *archery_record_csv_header(void) {
+    return "序号,日期,时间,靶型,组数,每组箭数,总箭数,总环数,平均,内十,脱靶,"
+           "X,10,9,8,7,6,5,4,3,2,1,0\n";
+}
+
+size_t archery_record_csv_row(const archery_record_t *record, uint16_t index,
+                              char *buffer, size_t capacity) {
+    if (!record || !buffer || capacity == 0) return 0;
+
+    static const char *const targets[] = {"40 半靶", "三联靶", "40 全靶",
+                                          "80 全靶", "122 全靶"};
+    const char *target =
+        record->target < ARCHERY_TARGET_COUNT ? targets[record->target] : "未知";
+
+    char date[16] = "";
+    char time[12] = "";
+    if (record->when != 0) {
+        archery_datetime_t dt;
+        archery_seconds_to_datetime(record->when, &dt);
+        snprintf(date, sizeof(date), "%04u-%02u-%02u", (unsigned)dt.year,
+                 (unsigned)dt.month, (unsigned)dt.day);
+        snprintf(time, sizeof(time), "%02u:%02u:%02u", (unsigned)dt.hour,
+                 (unsigned)dt.minute, (unsigned)dt.second);
+    }
+
+    const uint16_t arrows = (uint16_t)record->groups * record->arrows;
+    const uint16_t points = archery_record_total_points(record);
+    const uint16_t avg_x10 =
+        arrows == 0 ? 0 : (uint16_t)((points * 10u + arrows / 2u) / arrows);
+
+    uint16_t counts[12] = {0};
+    for (uint8_t group = 0; group < record->groups; group++) {
+        for (uint8_t arrow = 0; arrow < record->arrows; arrow++) {
+            const uint8_t code = archery_record_score(record, group, arrow);
+            if (code <= ARCHERY_SCORE_X) counts[code]++;
+        }
+    }
+
+    int written = snprintf(
+        buffer, capacity, "%u,%s,%s,%s,%u,%u,%u,%u,%u.%u,%u,%u",
+        (unsigned)index, date, time, target, (unsigned)record->groups,
+        (unsigned)record->arrows, (unsigned)arrows, (unsigned)points,
+        (unsigned)(avg_x10 / 10u), (unsigned)(avg_x10 % 10u),
+        (unsigned)archery_record_total_x(record),
+        (unsigned)archery_record_total_miss(record));
+    if (written < 0 || (size_t)written >= capacity) return 0;
+
+    for (int code = (int)ARCHERY_SCORE_X; code >= 0; code--) {
+        const int added = snprintf(buffer + written, capacity - (size_t)written,
+                                   ",%u", (unsigned)counts[code]);
+        if (added < 0 || (size_t)(written + added) >= capacity) return 0;
+        written += added;
+    }
+    const int added = snprintf(buffer + written, capacity - (size_t)written, "\n");
+    if (added < 0 || (size_t)(written + added) >= capacity) return 0;
+    return (size_t)(written + added);
 }

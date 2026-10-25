@@ -486,6 +486,8 @@ void archery_app_start(void) {
         archery_history_meta_init(&s_history.meta);
     }
 
+    archery_wifi_set_history(&s_history);
+
     archery_settings_t stored;
     if (archery_settings_load(&stored) != ESP_OK) {
         ESP_LOGW(TAG, "设置读取失败，使用默认亮度/息屏时间");

@@ -597,7 +597,7 @@ static void render_wifi(lv_obj_t *scr, const archery_flow_t *flow) {
         centered_label(scr, "手机 Wi-Fi 连接热点", ARCHERY_FONT_BODY, C_TEXT, 198);
         centered_label(scr, "Archery-Setup（无需密码）", ARCHERY_FONT_BODY, C_GOLD, 220);
         centered_label(scr, "浏览器打开 192.168.4.1", ARCHERY_FONT_BODY, C_TEXT, 242);
-        centered_label(scr, "微信扫码不支持自动入网", ARCHERY_FONT_BODY, C_MUTED, 264);
+        centered_label(scr, "可下载训练记录 CSV", ARCHERY_FONT_BODY, C_MUTED, 264);
         add_hint(scr, "确定 停止配网", 292);
         return;
     }
@@ -670,7 +670,7 @@ static void render_wifi(lv_obj_t *scr, const archery_flow_t *flow) {
     lv_obj_t *info = make_label(card, detail, ARCHERY_FONT_BODY, C_MUTED);
     lv_obj_align(info, LV_ALIGN_LEFT_MID, 10, 10);
 
-    static const char *rows[] = {"扫描网络", "手机扫码配网", "立即对时", "断开连接", "返回"};
+    static const char *rows[] = {"扫描网络", "手机配网 / 导出", "立即对时", "断开连接", "返回"};
     for (uint8_t row = 0; row < 5; row++) {
         const archery_rect_t rect = {20, (int16_t)(88 + row * 34), 200, 30};
         const bool selected = flow->wifi_row == row;
@@ -683,7 +683,7 @@ static void render_wifi(lv_obj_t *scr, const archery_flow_t *flow) {
     if (view->time_synced) {
         add_hint(scr, "已通过网络校准时间", 286);
     } else {
-        add_hint(scr, "1.0.0 · 长按确定 返回主页", 286);
+        add_hint(scr, "v" ARCHERY_FIRMWARE_VERSION " · 长按确定 返回主页", 286);
     }
 }
 // 设备端 Wi-Fi 密码输入：上/下换字符，确定下一位，空位确定即连接。
@@ -861,6 +861,8 @@ void archery_ui_show(const archery_flow_t *flow, const archery_history_t *histor
     }
     add_battery(scr, battery_soc);
     add_status_bar(scr, flow, s_wifi_view);
+    lv_obj_t *version = make_label(scr, "v" ARCHERY_FIRMWARE_VERSION, ARCHERY_FONT_BODY, C_MUTED);
+    lv_obj_set_pos(version, 8, 4);
     lv_screen_load(scr);
     if (previous) lv_obj_delete(previous);
 }

@@ -1,6 +1,8 @@
 // main/archery_wifi.h —— Wi-Fi 配网、扫描与 NTP 对时（实验版）。
 #pragma once
 
+#include "archery_history.h"
+#include "archery_store.h"
 #include "archery_wifi_view.h"
 #include "esp_err.h"
 #include <stdbool.h>
@@ -8,6 +10,9 @@
 
 // 状态变化回调：在 Wi-Fi/HTTP 任务里调用，回调里不要直接碰 LVGL，交给主任务。
 typedef void (*archery_wifi_event_cb_t)(void *user);
+
+// 配网网页同时提供历史记录 CSV 下载；传 NULL 表示下载空表。
+void archery_wifi_set_history(const archery_history_t *history);
 
 esp_err_t archery_wifi_init(archery_wifi_event_cb_t cb, void *user);
 

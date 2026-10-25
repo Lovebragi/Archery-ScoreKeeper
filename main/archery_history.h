@@ -77,6 +77,11 @@ uint8_t archery_record_total_miss(const archery_record_t *record);
 uint8_t archery_record_best_group(const archery_record_t *record);
 uint8_t archery_record_arrow_count(const archery_record_t *record);
 
+// CSV 导出：表头（UTF-8，逗号分隔）与单行记录；返回写入长度，0 表示缓冲区不足。
+const char *archery_record_csv_header(void);
+size_t archery_record_csv_row(const archery_record_t *record, uint16_t index,
+                              char *buffer, size_t capacity);
+
 // 编码：返回写入字节数；容量不足或数据非法返回 0。
 size_t archery_record_encode(const archery_record_t *record,
                              uint8_t *buffer, size_t capacity);

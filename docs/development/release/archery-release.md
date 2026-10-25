@@ -27,6 +27,7 @@ history is tracked by [`docs/applications/archery-scorekeeper-changelog.md`](../
 
 | Version | Git tag | Firmware SHA-256 | GitHub Release | Community revision |
 | --- | --- | --- | --- | --- |
+| 1.2.0 | `v1.2.0` | `293a4483…4738d5` | v1.2.0 | not submitted (3713 pending) |
 | 1.1.0 | `v1.1.0` | `17b8dcbf…57be6d` | v1.1.0 | 3713 (pending) |
 | 1.0.0 | `v1.0.0` | `ed68c310…f8861153` | v1.0.0 | 3701 (approved) |
 

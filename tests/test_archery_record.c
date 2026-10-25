@@ -92,6 +92,32 @@ static void test_totals_match_session(void) {
     assert(archery_record_group_points(&record, 3) == 0);
 }
 
+
+static void test_csv_export(void) {
+    archery_session_t session;
+    fill_session(&session, 2, 3);
+    archery_record_t record;
+    archery_record_from_session(&record, &session, 3, 60, 0x5A5A1234u);
+
+    const char *header = archery_record_csv_header();
+    assert(strstr(header, "序号,日期,时间,靶型") != NULL);
+    assert(strstr(header, "X,10,9,8,7,6,5,4,3,2,1,0") != NULL);
+
+    char line[256];
+    const size_t length = archery_record_csv_row(&record, 3, line, sizeof(line));
+    assert(length > 0);
+    assert(length == strlen(line));
+    assert(strncmp(line, "3,", 2) == 0);
+    assert(strstr(line, "40 半靶") != NULL);
+    assert(strstr(line, ",2,3,6,40,6.7,0,1,") != NULL);
+    // 行尾是 13 个环值统计（X、10..0）。
+    assert(line[length - 1] == '\n');
+
+    // 缓冲区不足必须失败，而不是写出半行。
+    char small[16];
+    assert(archery_record_csv_row(&record, 3, small, sizeof(small)) == 0);
+}
+
 static void expect_decode_failure(const uint8_t *buffer, size_t length) {
     archery_record_t decoded;
     assert(!archery_record_decode(&decoded, buffer, length));
@@ -214,6 +240,7 @@ int main(void) {
     test_corruption_detected();
     test_v1_record_compatibility();
     test_history_meta_and_slots();
+    test_csv_export();
     puts("archery history record/slot tests: PASS");
     return 0;
 }

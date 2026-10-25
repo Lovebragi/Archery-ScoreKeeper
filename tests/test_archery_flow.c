@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 static void press(archery_flow_t *flow, archery_key_t key) {
     (void)archery_flow_handle(flow, key);
@@ -45,9 +46,12 @@ static void test_home_and_setup(void) {
     press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.home_select == 1);
     press(&flow, ARCHERY_KEY_DOWN);
-    assert(flow.home_select == 2);  // 主页三项
+    assert(flow.home_select == 2);
     press(&flow, ARCHERY_KEY_DOWN);
-    assert(flow.home_select == 2);  // 到底钳制
+    assert(flow.home_select == 3);  // 主页四项：开始/历史/设置/联网
+    press(&flow, ARCHERY_KEY_DOWN);
+    assert(flow.home_select == 3);  // 到底钳制
+    press(&flow, ARCHERY_KEY_UP);
     press(&flow, ARCHERY_KEY_UP);
     press(&flow, ARCHERY_KEY_UP);
     assert(flow.home_select == 0);
@@ -383,8 +387,8 @@ static void test_settings_page(void) {
     assert(flow.settings_row == 0);
     assert(flow.settings.target == ARCHERY_TARGET_HALF_40);
     assert(flow.settings.rotate == 1);
-    assert(flow.settings.brightness == 100);
-    assert(flow.settings.off_seconds == 30);
+    assert(flow.settings.brightness == ARCHERY_SETTINGS_DEFAULT_BRIGHTNESS);
+    assert(flow.settings.off_seconds == ARCHERY_SETTINGS_DEFAULT_OFF_SECONDS);
 
     // 靶型：40 半靶 -> 三联靶 -> 40 全靶；到底钳制
     assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_SETTINGS_CHANGED);
@@ -405,18 +409,18 @@ static void test_settings_page(void) {
     assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.rotate == 1);
 
-    // 亮度：100 已到顶，向下改到 80
+    // 亮度：默认 20（最低），向上调到 40
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.settings_row == 2);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_NONE);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_SETTINGS_CHANGED);
-    assert(flow.settings.brightness == 80);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_NONE);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(flow.settings.brightness == 40);
 
-    // 息屏时间：30 -> 60
+    // 息屏时间：15 -> 30
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.settings_row == 3);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_SETTINGS_CHANGED);
-    assert(flow.settings.off_seconds == 60);
+    assert(flow.settings.off_seconds == 30);
 
     // 日期时间行：进入手动对时页并保存
     press(&flow, ARCHERY_KEY_OK);
@@ -444,11 +448,9 @@ static void test_settings_page(void) {
     assert(flow.page == ARCHERY_PAGE_HOME);
 
     // 再次进入：值保留；长按确定同样保存并返回
-    press(&flow, ARCHERY_KEY_DOWN);
-    press(&flow, ARCHERY_KEY_DOWN);
-    press(&flow, ARCHERY_KEY_OK);
+    press(&flow, ARCHERY_KEY_OK);  // 光标仍停在「设置」
     assert(flow.page == ARCHERY_PAGE_SETTINGS);
-    assert(flow.settings.brightness == 80);
+    assert(flow.settings.brightness == 40);
     press(&flow, ARCHERY_KEY_OK);  // 方向行
     press(&flow, ARCHERY_KEY_OK);  // 亮度行
     press(&flow, ARCHERY_KEY_OK);  // 息屏行
@@ -560,6 +562,117 @@ static void test_history_pages(void) {
     assert(flow.page == ARCHERY_PAGE_HOME);
 }
 
+
+static void test_wifi_page(void) {
+    archery_flow_t flow;
+    archery_flow_init(&flow);
+    // 主页四项：下移到「联网」并进入
+    press(&flow, ARCHERY_KEY_DOWN);
+    press(&flow, ARCHERY_KEY_DOWN);
+    press(&flow, ARCHERY_KEY_DOWN);
+    assert(flow.home_select == 3);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_WIFI_ENTER);
+    assert(flow.page == ARCHERY_PAGE_WIFI);
+    assert(flow.wifi_mode == 0 && flow.wifi_row == 0);
+
+    // 扫描：进入列表
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_WIFI_SCAN);
+    assert(flow.wifi_mode == 1 && flow.wifi_row == 0);
+    archery_flow_set_wifi_scan(&flow, 3);
+    press(&flow, ARCHERY_KEY_DOWN);
+    assert(flow.wifi_row == 1);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_WIFI_CONNECT);
+
+    // 列表末行"返回"
+    press(&flow, ARCHERY_KEY_DOWN);
+    press(&flow, ARCHERY_KEY_DOWN);
+    assert(flow.wifi_row == 3);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_NONE);
+    assert(flow.wifi_mode == 0);
+
+    // 菜单：手机扫码配网 / 立即对时 / 断开
+    press(&flow, ARCHERY_KEY_DOWN);
+    assert(flow.wifi_row == 1);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_WIFI_PROVISION);
+    press(&flow, ARCHERY_KEY_DOWN);
+    assert(flow.wifi_row == 2);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_WIFI_SYNC_TIME);
+    press(&flow, ARCHERY_KEY_DOWN);
+    assert(flow.wifi_row == 3);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_WIFI_STOP);
+
+    // 返回行：离开并回主页
+    press(&flow, ARCHERY_KEY_DOWN);
+    assert(flow.wifi_row == 4);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_WIFI_LEAVE);
+    assert(flow.page == ARCHERY_PAGE_HOME);
+
+    // 长按也能离开
+    press(&flow, ARCHERY_KEY_OK);
+    assert(flow.page == ARCHERY_PAGE_WIFI);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) == ARCHERY_ACT_WIFI_LEAVE);
+    assert(flow.page == ARCHERY_PAGE_HOME);
+
+    // 扫描结果清空后光标钳制
+    archery_flow_set_wifi_scan(&flow, 0);
+    assert(flow.wifi_ap_count == 0);
+}
+
+
+static void test_wifi_password(void) {
+    // 字符表：0-9、A-Z、a-z，首尾回绕
+    assert(archery_wifi_password_char(0) == '0');
+    assert(archery_wifi_password_char(9) == '9');
+    assert(archery_wifi_password_char(10) == 'A');
+    assert(archery_wifi_password_char(35) == 'Z');
+    assert(archery_wifi_password_char(36) == 'a');
+    assert(archery_wifi_password_char(61) == 'z');
+    assert(archery_wifi_password_char(62) == '0');
+    assert(archery_wifi_password_next('0', -1) == 61);
+    assert(archery_wifi_password_next('z', 1) == 0);
+
+    archery_flow_t flow;
+    archery_flow_init(&flow);
+    flow.page = ARCHERY_PAGE_WIFI;
+    flow.wifi_mode = 1;
+    flow.wifi_ap_count = 2;
+    archery_flow_set_wifi_security(&flow, 0x02);  // 第二个网络加密
+    flow.wifi_row = 1;
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_NONE);
+    assert(flow.page == ARCHERY_PAGE_WIFI_PASSWORD);
+    assert(flow.wifi_target == 1);
+    assert(flow.wifi_pw_len == 0 && flow.wifi_pw_pos == 0);
+
+    // 空位按上：出现 '1'（从 '0' 前进一位）
+    press(&flow, ARCHERY_KEY_UP);
+    assert(flow.wifi_pw_len == 1);
+    assert(flow.wifi_password[0] == '1');
+    // 确定下一位
+    press(&flow, ARCHERY_KEY_OK);
+    assert(flow.wifi_pw_pos == 1);
+    // 空位再按确定：提交连接
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) ==
+           ARCHERY_ACT_WIFI_CONNECT_PASSWORD);
+    assert(strcmp(flow.wifi_password, "1") == 0);
+
+    // 长按删除：两位退到一位，再退到空
+    flow.page = ARCHERY_PAGE_WIFI_PASSWORD;
+    flow.wifi_pw_pos = 2;
+    flow.wifi_pw_len = 2;
+    flow.wifi_password[0] = 'a';
+    flow.wifi_password[1] = 'b';
+    flow.wifi_password[2] = '\0';
+    press(&flow, ARCHERY_KEY_OK_LONG);
+    assert(flow.wifi_pw_pos == 1 && flow.wifi_pw_len == 1);
+    assert(strcmp(flow.wifi_password, "a") == 0);
+    press(&flow, ARCHERY_KEY_OK_LONG);
+    assert(flow.wifi_pw_pos == 0 && flow.wifi_pw_len == 0);
+    // 首位长按返回列表
+    press(&flow, ARCHERY_KEY_OK_LONG);
+    assert(flow.page == ARCHERY_PAGE_WIFI);
+    assert(flow.wifi_mode == 1);
+}
+
 int main(void) {
     test_home_and_setup();
     test_ring_count_entry();
@@ -571,6 +684,8 @@ int main(void) {
     test_triple_target_setup_and_entry();
     test_settings_page();
     test_history_pages();
+    test_wifi_page();
+    test_wifi_password();
     puts("archery flow state-machine tests: PASS");
     return 0;
 }

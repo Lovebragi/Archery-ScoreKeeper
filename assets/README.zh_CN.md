@@ -38,7 +38,7 @@ Flash、无 PSRAM，且界面文本是固定的）。
   与清单文件头部。
 - 目标路径：由 `main/CMakeLists.txt` 链接进 `main` 组件，界面通过
   `main/archery_fonts.h` 选择 `archery_font_16` / `archery_font_20`。
-- Flash 影响：字形位图与描述符约 61 KB，常驻只读 Flash，不占静态 RAM。
+- Flash 影响：字形位图与描述符约 79 KB，常驻只读 Flash，不占静态 RAM。
 - 覆盖契约：UI 文本出现字库或清单未覆盖的码点时静态测试失败；修改界面文字后
   需重新生成两个字级。
 

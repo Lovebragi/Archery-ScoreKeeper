@@ -22,10 +22,12 @@ typedef enum {
     ARCHERY_PAGE_ABORT_CONFIRM,
     ARCHERY_PAGE_SETTINGS,
     ARCHERY_PAGE_CLOCK,
+    ARCHERY_PAGE_WIFI,
+    ARCHERY_PAGE_WIFI_PASSWORD,
 } archery_page_t;
 
-// 主页入口数：开始训练 / 历史记录 / 设置。
-#define ARCHERY_HOME_ITEMS 3u
+// 主页入口数：开始训练 / 历史记录 / 设置 / 联网。
+#define ARCHERY_HOME_ITEMS 4u
 
 // 录入页行数上限：最多 12 个环值槽位 + 1 行"确认提交"。
 #define ARCHERY_ENTRY_ROWS_MAX (ARCHERY_RING_SLOT_MAX + 1u)
@@ -66,6 +68,14 @@ typedef enum {
     ARCHERY_ACT_SETTINGS_SAVE,     // 离开设置页：上层把设置写入 NVS
     ARCHERY_ACT_CLOCK_SAVE,        // 手动对时完成：上层设置时钟并持久化
     ARCHERY_ACT_HISTORY_FILTER,    // 历史筛选变了：上层重算可见条数
+    ARCHERY_ACT_WIFI_ENTER,        // 进入联网页：上层刷新连接状态
+    ARCHERY_ACT_WIFI_SCAN,         // 扫描附近 Wi-Fi
+    ARCHERY_ACT_WIFI_CONNECT,      // 连接选中的网络（flow->wifi_row）
+    ARCHERY_ACT_WIFI_PROVISION,    // 打开手机扫码配网（设备热点 + 网页）
+    ARCHERY_ACT_WIFI_SYNC_TIME,    // 立即用 NTP 对时
+    ARCHERY_ACT_WIFI_STOP,         // 断开/停止配网
+    ARCHERY_ACT_WIFI_LEAVE,        // 离开联网页：停止配网热点
+    ARCHERY_ACT_WIFI_CONNECT_PASSWORD,  // 用设备上输入的密码连接（flow->wifi_password）
 } archery_act_t;
 
 typedef struct {
@@ -93,6 +103,14 @@ typedef struct {
     archery_datetime_t clock_fields;  // 手动对时页正在编辑的字段
     uint8_t clock_row;      // 0..4 = 年/月/日/时/分
     bool clock_set;         // 是否已经手动校准过（显示"时间未校准"提示）
+    uint8_t wifi_row;       // 联网页光标
+    uint8_t wifi_mode;      // 0 = 菜单, 1 = 扫描结果列表
+    uint8_t wifi_ap_count;  // 扫描到的网络数（列表末行是"返回"）
+    uint8_t wifi_secure_mask;  // 扫描结果里哪些是加密网络（bit0 = 第 1 个）
+    uint8_t wifi_target;    // 正在输入密码的网络下标
+    char wifi_password[65]; // 设备上输入的密码
+    uint8_t wifi_pw_pos;    // 当前编辑位置
+    uint8_t wifi_pw_len;    // 已输入长度
 } archery_flow_t;
 
 void archery_flow_init(archery_flow_t *flow);
@@ -114,3 +132,11 @@ void archery_flow_set_history_count(archery_flow_t *flow, uint16_t count);
 
 // 当前时间（秒）由上层同步，供手动对时页初始化和"今天/最近 7 天"筛选使用。
 void archery_flow_set_clock(archery_flow_t *flow, uint32_t now, bool time_set);
+
+// 扫描结果条数由上层同步，列表光标会随之钳制。
+void archery_flow_set_wifi_scan(archery_flow_t *flow, uint8_t ap_count);
+void archery_flow_set_wifi_security(archery_flow_t *flow, uint8_t secure_mask);
+
+// 设备端密码输入使用的小工具（也便于主机测试）。
+char archery_wifi_password_char(uint8_t index);
+uint8_t archery_wifi_password_next(char current, int delta);

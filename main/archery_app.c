@@ -13,6 +13,9 @@
 #include "archery_settings.h"
 #include "archery_store.h"
 #include "archery_ui.h"
+#include "archery_version.h"
+#include "archery_wifi.h"
+#include "archery_wifi_view.h"
 #include "bsp_battery.h"
 #include "bsp_button.h"
 #include "bsp_display.h"
@@ -35,9 +38,12 @@ static const char *TAG = "archery_app";
 // 息屏浅睡后，唤醒键还按着时先吞掉按键动作，直到松手（最长兜底 5 秒）。
 #define WAKE_GUARD_MAX_US (5LL * 1000 * 1000)
 
+typedef enum { APP_MSG_KEY = 0, APP_MSG_WIFI } app_msg_type_t;
+
 typedef struct {
+    uint8_t type;
     archery_key_t key;
-} key_message_t;
+} app_message_t;
 
 static QueueHandle_t s_queue;
 static TaskHandle_t s_worker;
@@ -62,6 +68,19 @@ static bool s_clock_set;
 static uint32_t s_clock_saved;
 static int64_t s_next_clock_save_us;
 static uint32_t s_session_when;
+static archery_wifi_view_t s_wifi_view;
+// 密码页长按上/下连发：方向、下一次触发时间、是否吞掉松开时的单击。
+static uint8_t s_pw_dir;
+static int64_t s_pw_next_step;
+static bool s_pw_swallow_click;
+
+// Wi-Fi 任务发来的通知：只入队，界面在主任务里刷新。
+static void on_wifi_event(void *user) {
+    (void)user;
+    if (!s_queue) return;
+    const app_message_t message = {.type = APP_MSG_WIFI};
+    (void)xQueueSend(s_queue, &message, 0);
+}
 
 static uint32_t clock_now(void) {
     const int64_t elapsed = esp_timer_get_time() - s_clock_base_us;
@@ -90,8 +109,21 @@ static void clock_persist(bool force) {
     }
 }
 
+// 把 Wi-Fi 视图同步到 flow（扫描条数与哪些网络加密）。
+static void sync_wifi_flow(void) {
+    archery_wifi_fill_view(&s_wifi_view);
+    archery_flow_set_wifi_scan(&s_flow, s_wifi_view.ap_count);
+    uint8_t mask = 0;
+    for (uint8_t i = 0; i < s_wifi_view.ap_count && i < 8; i++) {
+        if (s_wifi_view.secure[i]) mask = (uint8_t)(mask | (1u << i));
+    }
+    archery_flow_set_wifi_security(&s_flow, mask);
+}
+
 static void redraw(void) {
     archery_flow_set_clock(&s_flow, clock_now(), s_clock_set);
+    sync_wifi_flow();
+    archery_ui_set_wifi_view(&s_wifi_view);
     if (!bsp_lvgl_lock(500)) {
         ESP_LOGW(TAG, "获取 LVGL 锁超时，跳过本次重绘");
         return;
@@ -133,6 +165,70 @@ static void apply_settings(const archery_settings_t *settings) {
         (void)bsp_display_set_flip_180(settings->rotate != 0);
         bsp_lvgl_unlock();
     }
+}
+
+// Wi-Fi 任务的事件：刷新视图、同步扫描条数，若拿到 NTP 时间就更新时钟。
+// 密码页：按住上/下时自动连发，避免 62 个字符一个个点。
+static void password_repeat_poll(void) {
+    if (s_flow.page != ARCHERY_PAGE_WIFI_PASSWORD) {
+        s_pw_dir = 0;
+        s_pw_swallow_click = false;
+        return;
+    }
+    // 先按电压判断"物理键"，再套用屏幕方向对应的角色旋转：
+    // 倒装时物理上键是逻辑确定、物理确定键才是逻辑上。
+    const int mv = bsp_button_read_mv();
+    archery_button_t physical = ARCHERY_BUTTON_OK;
+    bool pressed = false;
+    if (mv >= 0 && mv < 150) {
+        physical = ARCHERY_BUTTON_UP;
+        pressed = true;
+    } else if (mv >= 150 && mv < 447) {
+        physical = ARCHERY_BUTTON_DOWN;
+        pressed = true;
+    } else if (mv >= 447 && mv < BSP_BTN_MV_RELEASED_MIN) {
+        physical = ARCHERY_BUTTON_OK;
+        pressed = true;
+    }
+    uint8_t dir = 0;
+    if (pressed) {
+        const archery_key_t logical = archery_flow_button_key(physical, s_rotate_keys);
+        if (logical == ARCHERY_KEY_UP) {
+            dir = 1;
+        } else if (logical == ARCHERY_KEY_DOWN) {
+            dir = 2;
+        }
+    }
+    const int64_t now = esp_timer_get_time();
+    if (dir == 0) {
+        s_pw_dir = 0;
+        return;
+    }
+    if (dir != s_pw_dir) {
+        s_pw_dir = dir;
+        s_pw_next_step = now + 350000;  // 按住 350ms 后开始连发
+        s_pw_swallow_click = true;
+        (void)archery_flow_handle(&s_flow,
+                                  dir == 1 ? ARCHERY_KEY_UP : ARCHERY_KEY_DOWN);
+        redraw();
+        return;
+    }
+    if (now >= s_pw_next_step) {
+        (void)archery_flow_handle(&s_flow,
+                                  dir == 1 ? ARCHERY_KEY_UP : ARCHERY_KEY_DOWN);
+        s_pw_next_step = now + 60000;  // 约 16 次/秒
+        redraw();
+    }
+}
+
+static void handle_wifi_event(void) {
+    sync_wifi_flow();
+    uint32_t seconds = 0;
+    if (archery_wifi_take_time(&seconds)) {
+        clock_set_to(seconds);
+        clock_persist(true);
+    }
+    redraw();
 }
 
 static void handle_key(archery_key_t key) {
@@ -185,6 +281,42 @@ static void handle_key(archery_key_t key) {
         refresh_history_count();
         break;
 
+    case ARCHERY_ACT_WIFI_ENTER:
+        archery_wifi_fill_view(&s_wifi_view);
+        archery_flow_set_wifi_scan(&s_flow, s_wifi_view.ap_count);
+        break;
+    case ARCHERY_ACT_WIFI_SCAN:
+        (void)archery_wifi_scan();
+        break;
+    case ARCHERY_ACT_WIFI_CONNECT:
+        (void)archery_wifi_connect_index(s_flow.wifi_row);
+        break;
+    case ARCHERY_ACT_WIFI_CONNECT_PASSWORD: {
+        const uint8_t index = s_flow.wifi_target;
+        if (index < ARCHERY_WIFI_AP_MAX) {
+            char ssid[ARCHERY_WIFI_SSID_MAX];
+            strncpy(ssid, s_wifi_view.ssid[index], sizeof(ssid) - 1);
+            ssid[sizeof(ssid) - 1] = '\0';
+            (void)archery_wifi_connect(ssid, s_flow.wifi_password);
+        }
+        break;
+    }
+    case ARCHERY_ACT_WIFI_PROVISION:
+        (void)archery_wifi_start_provisioning(NULL);
+        break;
+    case ARCHERY_ACT_WIFI_SYNC_TIME:
+        (void)archery_wifi_sync_time();
+        break;
+    case ARCHERY_ACT_WIFI_STOP:
+        if (archery_wifi_provisioning()) {
+            (void)archery_wifi_stop_provisioning();
+        } else {
+            (void)archery_wifi_disconnect();
+        }
+        break;
+    case ARCHERY_ACT_WIFI_LEAVE:
+        (void)archery_wifi_stop_provisioning();
+        break;
     case ARCHERY_ACT_NONE:
         break;
     }
@@ -226,7 +358,7 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t event, void *user) {
         return;
     }
     if (!s_ready || !s_queue) return;
-    const key_message_t message = {.key = key};
+    const app_message_t message = {.type = APP_MSG_KEY, .key = key};
     (void)xQueueSend(s_queue, &message, 0);
 }
 
@@ -243,7 +375,7 @@ static void light_sleep_now(void) {
     }
     if (!bsp_lvgl_lock(200)) return;
 
-    key_message_t pending;
+    app_message_t pending;
     while (xQueueReceive(s_queue, &pending, 0) == pdTRUE) {
     }
 
@@ -299,13 +431,25 @@ static void worker_task(void *argument) {
     (void)argument;
     s_next_battery_us = esp_timer_get_time();
     for (;;) {
-        key_message_t message;
-        const TickType_t wait = pdMS_TO_TICKS(500);
+        app_message_t message;
+        TickType_t wait = pdMS_TO_TICKS(500);
+        if (s_flow.page == ARCHERY_PAGE_WIFI_PASSWORD) wait = pdMS_TO_TICKS(60);
         if (xQueueReceive(s_queue, &message, wait) == pdTRUE) {
             s_last_input_us = esp_timer_get_time();
-            handle_key(message.key);
+            if (message.type == APP_MSG_KEY) {
+                if (s_flow.page == ARCHERY_PAGE_WIFI_PASSWORD &&
+                    (message.key == ARCHERY_KEY_UP || message.key == ARCHERY_KEY_DOWN) &&
+                    s_pw_swallow_click) {
+                    s_pw_swallow_click = false;  // 本次按下已由连发处理
+                } else {
+                    handle_key(message.key);
+                }
+            } else {
+                handle_wifi_event();
+            }
             continue;
         }
+        password_repeat_poll();
         const int64_t now = esp_timer_get_time();
         if (now >= s_next_battery_us) {
             refresh_battery();
@@ -318,7 +462,10 @@ static void worker_task(void *argument) {
         }
         const uint16_t off_seconds = s_flow.settings.off_seconds;
         if (off_seconds > 0 &&
-            now - s_last_input_us >= (int64_t)off_seconds * 1000000) {
+            now - s_last_input_us >= (int64_t)off_seconds * 1000000 &&
+            s_flow.page != ARCHERY_PAGE_WIFI &&
+            s_flow.page != ARCHERY_PAGE_WIFI_PASSWORD &&
+            !archery_wifi_provisioning()) {
             light_sleep_now();
         }
     }
@@ -331,6 +478,7 @@ void archery_app_start(void) {
     }
 
     archery_flow_init(&s_flow);
+    ESP_LOGI(TAG, "%s %s", ARCHERY_FIRMWARE_CHANNEL, ARCHERY_FIRMWARE_VERSION);
 
     if (archery_store_load(&s_history) != ESP_OK) {
         ESP_LOGW(TAG, "历史记录载入失败，从空历史开始");
@@ -364,9 +512,15 @@ void archery_app_start(void) {
     s_last_input_us = s_session_start_us;
     refresh_history_count();
 
+    if (archery_wifi_init(on_wifi_event, NULL) != ESP_OK) {
+        ESP_LOGW(TAG, "Wi-Fi 初始化失败，联网页不可用");
+    }
+    archery_wifi_fill_view(&s_wifi_view);
+    archery_flow_set_wifi_scan(&s_flow, s_wifi_view.ap_count);
+
     redraw();
 
-    s_queue = xQueueCreate(KEY_QUEUE_DEPTH, sizeof(key_message_t));
+    s_queue = xQueueCreate(KEY_QUEUE_DEPTH, sizeof(app_message_t));
     if (!s_queue) {
         ESP_LOGE(TAG, "按键队列创建失败，界面只读");
         return;

@@ -71,16 +71,17 @@ static void test_adjust(void) {
     assert(archery_settings_adjust(&settings, 1, -1));
     assert(settings.rotate == 1);
 
-    // 亮度
-    assert(archery_settings_adjust(&settings, 2, -1));
-    assert(settings.brightness == 80);
+    // 亮度：默认 20（最低），向下无效，向上到 40、60
+    assert(!archery_settings_adjust(&settings, 2, -1));
+    assert(settings.brightness == ARCHERY_SETTINGS_DEFAULT_BRIGHTNESS);
     assert(archery_settings_adjust(&settings, 2, 1));
-    assert(settings.brightness == 100);
-    assert(!archery_settings_adjust(&settings, 2, 1));
+    assert(settings.brightness == 40);
+    assert(archery_settings_adjust(&settings, 2, 1));
+    assert(settings.brightness == 60);
 
-    // 息屏时间
+    // 息屏时间：默认 15 -> 30
     assert(archery_settings_adjust(&settings, 3, 1));
-    assert(settings.off_seconds == 60);
+    assert(settings.off_seconds == 30);
     settings.off_seconds = 0;
     assert(!archery_settings_adjust(&settings, 3, -1));
     assert(settings.off_seconds == 0);

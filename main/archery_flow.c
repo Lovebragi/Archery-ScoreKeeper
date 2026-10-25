@@ -71,6 +71,42 @@ void archery_flow_set_clock(archery_flow_t *flow, uint32_t now, bool time_set) {
     flow->clock_set = time_set;
 }
 
+static const char WIFI_PW_CHARS[] =
+    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+#define WIFI_PW_CHAR_COUNT ((uint8_t)(sizeof(WIFI_PW_CHARS) - 1u))
+
+char archery_wifi_password_char(uint8_t index) {
+    return WIFI_PW_CHARS[index % WIFI_PW_CHAR_COUNT];
+}
+
+uint8_t archery_wifi_password_next(char current, int delta) {
+    int index = 0;
+    for (uint8_t i = 0; i < WIFI_PW_CHAR_COUNT; i++) {
+        if (WIFI_PW_CHARS[i] == current) {
+            index = i;
+            break;
+        }
+    }
+    int next = index + delta;
+    while (next < 0) next += WIFI_PW_CHAR_COUNT;
+    while (next >= WIFI_PW_CHAR_COUNT) next -= WIFI_PW_CHAR_COUNT;
+    return (uint8_t)next;
+}
+
+void archery_flow_set_wifi_security(archery_flow_t *flow, uint8_t secure_mask) {
+    if (!flow) return;
+    flow->wifi_secure_mask = secure_mask;
+}
+
+void archery_flow_set_wifi_scan(archery_flow_t *flow, uint8_t ap_count) {
+    if (!flow) return;
+    flow->wifi_ap_count = ap_count;
+    // 只有扫描列表的光标才受条数限制；菜单行（0..4）不能被 ap_count=0 拉回。
+    if (flow->wifi_mode == 1 && flow->wifi_row > ap_count) {
+        flow->wifi_row = ap_count;
+    }
+}
+
 // 物理按键角色映射：自然方向就是"上/下/确定"；整机倒装时角色转 180°。
 archery_key_t archery_flow_button_key(archery_button_t button, bool rotate_roles) {
     if (rotate_roles) {
@@ -148,9 +184,14 @@ static archery_act_t handle_home(archery_flow_t *flow, archery_key_t key) {
         } else if (flow->home_select == 1) {
             flow->history_cursor = 0;
             flow->page = ARCHERY_PAGE_HISTORY;
-        } else {
+        } else if (flow->home_select == 2) {
             flow->settings_row = 0;
             flow->page = ARCHERY_PAGE_SETTINGS;
+        } else {
+            flow->wifi_mode = 0;
+            flow->wifi_row = 0;
+            flow->page = ARCHERY_PAGE_WIFI;
+            return ARCHERY_ACT_WIFI_ENTER;
         }
         break;
     case ARCHERY_KEY_OK_LONG:
@@ -202,6 +243,116 @@ static void clock_adjust(archery_datetime_t *dt, uint8_t field, int delta) {
     // 年/月变化后，把日钳进当月范围（例如 1/31 -> 2 月变成 2/28）。
     const int max = (int)archery_clock_days_in_month(dt->year, dt->month);
     if (dt->day > max) dt->day = (uint8_t)max;
+}
+
+
+// 联网页：菜单（扫描 / 手机扫码 / 立即对时 / 断开 / 返回）或扫描结果列表。
+static archery_act_t handle_wifi(archery_flow_t *flow, archery_key_t key) {
+    if (flow->wifi_mode == 0) {
+        switch (key) {
+        case ARCHERY_KEY_UP:
+            move_cursor(&flow->wifi_row, -1, 0, 4);
+            break;
+        case ARCHERY_KEY_DOWN:
+            move_cursor(&flow->wifi_row, 1, 0, 4);
+            break;
+        case ARCHERY_KEY_OK:
+            switch (flow->wifi_row) {
+            case 0:
+                flow->wifi_mode = 1;
+                flow->wifi_row = 0;
+                return ARCHERY_ACT_WIFI_SCAN;
+            case 1:
+                return ARCHERY_ACT_WIFI_PROVISION;
+            case 2:
+                return ARCHERY_ACT_WIFI_SYNC_TIME;
+            case 3:
+                return ARCHERY_ACT_WIFI_STOP;
+            default:
+                flow->wifi_mode = 0;
+                flow->wifi_row = 0;
+                flow->page = ARCHERY_PAGE_HOME;
+                return ARCHERY_ACT_WIFI_LEAVE;
+            }
+            break;
+        case ARCHERY_KEY_OK_LONG:
+            flow->wifi_mode = 0;
+            flow->wifi_row = 0;
+            flow->page = ARCHERY_PAGE_HOME;
+            return ARCHERY_ACT_WIFI_LEAVE;
+        }
+        return ARCHERY_ACT_NONE;
+    }
+
+    // 列表：0..ap_count-1 是网络，ap_count 是"返回"。
+    switch (key) {
+    case ARCHERY_KEY_UP:
+        move_cursor(&flow->wifi_row, -1, 0, flow->wifi_ap_count);
+        break;
+    case ARCHERY_KEY_DOWN:
+        move_cursor(&flow->wifi_row, 1, 0, flow->wifi_ap_count);
+        break;
+    case ARCHERY_KEY_OK:
+        if (flow->wifi_row < flow->wifi_ap_count) {
+            if (flow->wifi_secure_mask & (1u << flow->wifi_row)) {
+                // 加密网络：在本机输入密码。
+                flow->wifi_target = flow->wifi_row;
+                memset(flow->wifi_password, 0, sizeof(flow->wifi_password));
+                flow->wifi_pw_pos = 0;
+                flow->wifi_pw_len = 0;
+                flow->page = ARCHERY_PAGE_WIFI_PASSWORD;
+                return ARCHERY_ACT_NONE;
+            }
+            return ARCHERY_ACT_WIFI_CONNECT;
+        }
+        flow->wifi_mode = 0;
+        flow->wifi_row = 0;
+        break;
+    case ARCHERY_KEY_OK_LONG:
+        flow->wifi_mode = 0;
+        flow->wifi_row = 0;
+        break;
+    }
+    return ARCHERY_ACT_NONE;
+}
+// 设备端密码输入：上/下换字符，确定下一位；空位按确定开始连接。
+static archery_act_t handle_wifi_password(archery_flow_t *flow, archery_key_t key) {
+    switch (key) {
+    case ARCHERY_KEY_UP:
+    case ARCHERY_KEY_DOWN: {
+        if (flow->wifi_pw_pos >= 64u) break;
+        const char current = flow->wifi_pw_pos < flow->wifi_pw_len
+                                 ? flow->wifi_password[flow->wifi_pw_pos]
+                                 : '0';
+        const uint8_t next =
+            archery_wifi_password_next(current, key == ARCHERY_KEY_UP ? 1 : -1);
+        flow->wifi_password[flow->wifi_pw_pos] = archery_wifi_password_char(next);
+        if (flow->wifi_pw_pos >= flow->wifi_pw_len) {
+            flow->wifi_pw_len = (uint8_t)(flow->wifi_pw_pos + 1u);
+        }
+        flow->wifi_password[flow->wifi_pw_len] = '\0';
+        break;
+    }
+    case ARCHERY_KEY_OK:
+        if (flow->wifi_pw_pos < flow->wifi_pw_len) {
+            flow->wifi_pw_pos++;
+        } else if (flow->wifi_pw_len > 0) {
+            flow->wifi_password[flow->wifi_pw_len] = '\0';
+            return ARCHERY_ACT_WIFI_CONNECT_PASSWORD;
+        }
+        break;
+    case ARCHERY_KEY_OK_LONG:
+        if (flow->wifi_pw_pos > 0) {
+            flow->wifi_pw_pos--;
+            flow->wifi_pw_len = flow->wifi_pw_pos;
+            flow->wifi_password[flow->wifi_pw_len] = '\0';
+        } else {
+            flow->page = ARCHERY_PAGE_WIFI;
+            flow->wifi_mode = 1;
+        }
+        break;
+    }
+    return ARCHERY_ACT_NONE;
 }
 
 static archery_act_t handle_clock(archery_flow_t *flow, archery_key_t key) {
@@ -498,6 +649,8 @@ archery_act_t archery_flow_handle(archery_flow_t *flow, archery_key_t key) {
     case ARCHERY_PAGE_ABORT_CONFIRM: return handle_abort_confirm(flow, key);
     case ARCHERY_PAGE_SETTINGS: return handle_settings(flow, key);
     case ARCHERY_PAGE_CLOCK: return handle_clock(flow, key);
+    case ARCHERY_PAGE_WIFI: return handle_wifi(flow, key);
+    case ARCHERY_PAGE_WIFI_PASSWORD: return handle_wifi_password(flow, key);
     }
     return ARCHERY_ACT_NONE;
 }

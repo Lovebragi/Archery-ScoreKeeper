@@ -4,10 +4,12 @@
 
 # Archery Scorekeeper (Half and Full Targets)
 
-An offline score keeper for 40 cm half targets, three-spot faces and 40/80/122 cm
-full targets. It runs on FoloToy AI Passport, records a configurable number of
-groups and arrows, stores the last 300 sessions with timestamps in NVS, and shows
-them again from the history screen with an all / today / last-7-days filter. The
+A score keeper for 40 cm half targets, three-spot faces and 40/80/122 cm full
+targets. It runs on FoloToy AI Passport, records a configurable number of groups
+and arrows, stores the last 300 sessions with timestamps in NVS, and shows them
+again from the history screen with an all / today / last-7-days filter. An
+optional Wi-Fi page connects to a router for NTP time sync, with phone-based
+provisioning or on-device password entry. The
 application owns the display and the three buttons; it never uses the baseline
 test menu and needs no network, audio, or cloud account.
 
@@ -55,13 +57,15 @@ immediately.
 
 | Screen | Shows | Up / Down | OK | Long OK |
 | --- | --- | --- | --- | --- |
-| Home | Target rings, three entries, battery | Select entry | Enter | – |
+| Home | Target rings, four entries, clock and network status, battery | Select entry | Enter | – |
 | Setup | Group count, arrows per group, per-face arrows for the three-spot target, start | Adjust the focused value | Next field / start | Previous field (back to home on the first row) |
 | Settings | Target type, screen orientation, screen brightness, screen-off time, date/time, back | Adjust the focused value | Next field / open date-time / save and back | Save and back |
 | Entry | Two-column ring tally for the current group and a commit row (one face at a time for the three-spot target) | Change the highlighted ring's arrow count | Next ring / commit row | Previous ring (abandon confirmation on the first row) |
 | Summary | Finished group, running total, group dots | – | Next group / summary | Abandon confirmation |
 | Finish | Session total, average, X/M, save state | – | Back to home | Back to home |
 | History | Timestamped sessions (newest 300), all / today / last-7-days filter, clear and back rows (an empty list still shows the back row) | Move cursor | Open detail / clear / home | Cycle filter |
+| Wi-Fi | Connection state, scan / phone provisioning / sync time / disconnect / back | Move cursor | Run action | Back to home |
+| Wi-Fi password | SSID, password being typed, current character | Change character (hold to repeat) | Next character / connect | Delete / back |
 | Detail | One group of one session, shown as the same ring tally | Previous / next group | Back | Back |
 | Confirmation | Abandon session or clear history | Select option | Execute | Cancel |
 | Date/time | Year, month, day, hour, minute | Adjust the focused field | Next field / save | Save |
@@ -89,12 +93,15 @@ more OK instead of walking through the remaining empty rows.
   seconds, a timestamp, and 4-bit packed ring codes (144 arrows fit in 72 bytes).
   Records written before the target or timestamp fields existed still decode and
   fall back to a 40 cm half target and an unknown time.
+- Wi-Fi credentials live in the same NVS namespace (`w_ssid`, `w_pass`) and are
+  reused on boot.
 - Clearing history erases the record blobs and restarts numbering at 1; settings
   and the clock are kept.
-- The device has no battery-backed RTC and no network time source. The clock is
-  a persisted local wall time plus a monotonic timer: it keeps running while
-  powered, resumes from the last saved value after power loss, and can be set by
-  hand in Settings. History filters use that clock, and unknown times show `--`.
+- The device has no battery-backed RTC. The clock is a persisted local wall time
+  plus a monotonic timer: it keeps running while powered, resumes from the last
+  saved value after power loss, and can be set by hand in Settings or by NTP
+  after connecting to Wi-Fi. History filters use that clock, and unknown times
+  show `--`.
 
 ## Fonts
 
@@ -103,7 +110,7 @@ generated from the UI's own strings:
 
 - `assets/fonts/archery_chars.txt` — the non-ASCII code point inventory.
 - `assets/fonts/archery_font_16.c`, `archery_font_20.c` — generated LVGL fonts
-  (4 bpp, PLAIN, no kerning, about 61 KB of bitmap data in Flash).
+  (4 bpp, PLAIN, no kerning, about 79 KB of bitmap data in Flash).
 - `assets/fonts/archery_font_16.json`, `archery_font_20.json` — per-glyph
   checksums used by the static gate.
 
@@ -135,8 +142,8 @@ The home screen has a third entry, Settings, with five controls:
 | --- | --- | --- |
 | Target type | 40 cm half, three-spot half, 40/80/122 cm full | 40 cm half |
 | Screen orientation | Inverted / Normal | Inverted |
-| Screen brightness | 20 / 40 / 60 / 80 / 100% | 100% |
-| Screen-off time | 0 / 15 / 30 / 60 / 120 s (`0` keeps the screen on) | 30 s |
+| Screen brightness | 20 / 40 / 60 / 80 / 100% | 20% |
+| Screen-off time | 0 / 15 / 30 / 60 / 120 s (`0` keeps the screen on) | 15 s |
 | Date/time | Local wall clock, set by hand | Build time until calibrated |
 
 After the configured idle time the application turns the backlight off, disables

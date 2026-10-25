@@ -8,6 +8,7 @@
 //
 // 屏幕方向由设置决定（默认倒装 180°），运行时通过 MADCTL 切换。
 #include "archery_app.h"
+#include "archery_version.h"
 #include "bsp_battery.h"
 #include "bsp_display.h"
 #include "bsp_i2c.h"
@@ -31,7 +32,8 @@ static esp_err_t storage_init(void) {
 }
 
 void app_main(void) {
-    ESP_LOGI(TAG, "射箭计分器启动（半靶/三联/全靶，300 条历史）");
+    ESP_LOGI(TAG, "%s %s 启动（半靶/三联/全靶，300 条历史）",
+             ARCHERY_FIRMWARE_CHANNEL, ARCHERY_FIRMWARE_VERSION);
 
     bsp_i2c_init();
 

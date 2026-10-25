@@ -43,7 +43,7 @@ every string it can print).
   and the inventory header.
 - Destination: linked into the `main` component by `main/CMakeLists.txt`; the UI
   selects `archery_font_16` / `archery_font_20` through `main/archery_fonts.h`.
-- Flash impact: about 61 KB of glyph bitmaps plus descriptors, resident in
+- Flash impact: about 79 KB of glyph bitmaps plus descriptors, resident in
   read-only Flash (no static RAM).
 - Coverage contract: the static test fails when UI text needs a code point that
   is missing from either font or from the inventory. Regenerate both sizes after

@@ -10,6 +10,9 @@
 
 #include "archery_fonts.h"
 #include "archery_layout.h"
+#include "archery_qr.h"
+#include "archery_version.h"
+#include "archery_wifi_view.h"
 #include "bsp_pins.h"
 #include "lvgl.h"
 #include <stdio.h>
@@ -28,6 +31,7 @@
 #define C_GREEN     0x63C08A
 
 static lv_obj_t *s_screen;
+static const archery_wifi_view_t *s_wifi_view;
 
 // ---------------------------------------------------------------------------
 // 基础控件
@@ -103,6 +107,39 @@ static void add_battery(lv_obj_t *scr, int soc) {
     lv_obj_set_style_border_width(fill, 0, 0);
     lv_obj_set_style_pad_all(fill, 0, 0);
     lv_obj_remove_flag(fill, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+// 顶部状态栏：电池左侧显示当前时间（时:分）与网络状态。
+static void add_status_bar(lv_obj_t *scr, const archery_flow_t *flow,
+                           const archery_wifi_view_t *view) {
+    char time_text[8] = "--:--";
+    if (flow->clock_set) {
+        archery_datetime_t dt;
+        archery_seconds_to_datetime(flow->clock_now, &dt);
+        snprintf(time_text, sizeof(time_text), "%02u:%02u", (unsigned)dt.hour,
+                 (unsigned)dt.minute);
+    }
+    lv_obj_t *clock = make_label(scr, time_text, ARCHERY_FONT_BODY, C_MUTED);
+    lv_obj_align(clock, LV_ALIGN_TOP_RIGHT, -42, 4);
+
+    // 网络状态用小圆点表示：绿=已联网，金=配网中，灰=未联网。
+    uint32_t net_color = C_MUTED;
+    if (view) {
+        if (view->state == ARCHERY_WIFI_AP_READY) {
+            net_color = C_GOLD;
+        } else if (view->sta_connected) {
+            net_color = C_GREEN;
+        }
+    }
+    lv_obj_t *dot = lv_obj_create(scr);
+    lv_obj_set_pos(dot, 152, 12);
+    lv_obj_set_size(dot, 5, 5);
+    lv_obj_set_style_radius(dot, 4, 0);
+    lv_obj_set_style_bg_color(dot, lv_color_hex(net_color), 0);
+    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(dot, 0, 0);
+    lv_obj_set_style_pad_all(dot, 0, 0);
+    lv_obj_remove_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
 }
 
 static void add_title(lv_obj_t *scr, const char *text) {
@@ -203,9 +240,9 @@ static void render_home(lv_obj_t *scr, const archery_flow_t *flow) {
              target_ring_range(flow->settings.target));
     centered_label(scr, range, ARCHERY_FONT_BODY, C_MUTED, 156);
 
-    static const char *items[ARCHERY_HOME_ITEMS] = {"开始训练", "历史记录", "设置"};
+    static const char *items[ARCHERY_HOME_ITEMS] = {"开始训练", "历史记录", "设置", "联网"};
     for (uint8_t i = 0; i < ARCHERY_HOME_ITEMS; i++) {
-        const archery_rect_t rect = {32, (int16_t)(186 + i * 34), 176, 30};
+        const archery_rect_t rect = {32, (int16_t)(180 + i * 26), 176, 24};
         const bool selected = flow->home_select == i;
         lv_obj_t *card = make_card(scr, rect, selected, false);
         lv_obj_t *label = make_label(card, items[i], ARCHERY_FONT_BODY,
@@ -541,6 +578,153 @@ static void render_detail(lv_obj_t *scr, const archery_flow_t *flow,
     add_hint(scr, "上/下 换组 · 确定 返回", 284);
 }
 
+// 联网：状态 + 扫描列表 / 手机扫码配网 / 立即对时。
+void archery_ui_set_wifi_view(const archery_wifi_view_t *view) { s_wifi_view = view; }
+
+static void render_wifi(lv_obj_t *scr, const archery_flow_t *flow) {
+    add_title(scr, "联网");
+    const archery_wifi_view_t *view = s_wifi_view;
+    if (!view) {
+        centered_label(scr, "联网模块未初始化", ARCHERY_FONT_TITLE, C_TEXT, 120);
+        add_hint(scr, "长按确定 返回主页", 284);
+        return;
+    }
+
+    if (view->state == ARCHERY_WIFI_AP_READY) {
+        lv_obj_t *img = lv_image_create(scr);
+        lv_image_set_src(img, &archery_qr_image);
+        lv_obj_align(img, LV_ALIGN_TOP_MID, 0, 44);
+        centered_label(scr, "手机 Wi-Fi 连接热点", ARCHERY_FONT_BODY, C_TEXT, 198);
+        centered_label(scr, "Archery-Setup（无需密码）", ARCHERY_FONT_BODY, C_GOLD, 220);
+        centered_label(scr, "浏览器打开 192.168.4.1", ARCHERY_FONT_BODY, C_TEXT, 242);
+        centered_label(scr, "微信扫码不支持自动入网", ARCHERY_FONT_BODY, C_MUTED, 264);
+        add_hint(scr, "确定 停止配网", 292);
+        return;
+    }
+
+    if (flow->wifi_mode == 1) {
+        if (view->state == ARCHERY_WIFI_SCANNING) {
+            centered_label(scr, "正在扫描附近 Wi-Fi…", ARCHERY_FONT_BODY, C_MUTED, 40);
+        } else {
+            char subtitle[40];
+            snprintf(subtitle, sizeof(subtitle), "共 %u 个网络", (unsigned)view->ap_count);
+            centered_label(scr, subtitle, ARCHERY_FONT_BODY, C_MUTED, 40);
+        }
+        const uint8_t visible = 4;
+        const uint16_t total = (uint16_t)(view->ap_count + 1u);  // 末行"返回"
+        const uint16_t cursor = flow->wifi_row;
+        uint16_t offset = 0;
+        if (cursor >= visible) offset = (uint16_t)(cursor - visible + 1u);
+        for (uint8_t row = 0; row < visible; row++) {
+            const uint16_t index = (uint16_t)(offset + row);
+            if (index >= total) break;
+            const archery_rect_t rect = {14, (int16_t)(58 + row * 48), 212, 42};
+            const bool selected = index == cursor;
+            lv_obj_t *card = make_card(scr, rect, selected, false);
+            if (index >= view->ap_count) {
+                lv_obj_t *label = make_label(card, "返回", ARCHERY_FONT_BODY,
+                                             selected ? C_GOLD : C_TEXT);
+                lv_obj_center(label);
+                continue;
+            }
+            lv_obj_t *name = make_label(card, view->ssid[index], ARCHERY_FONT_BODY,
+                                        selected ? C_GOLD : C_TEXT);
+            lv_obj_align(name, LV_ALIGN_LEFT_MID, 10, -8);
+            char meta[24];
+            snprintf(meta, sizeof(meta), "%s  %d dBm",
+                     view->secure[index] ? "加密" : "开放", (int)view->rssi[index]);
+            lv_obj_t *info = make_label(card, meta, ARCHERY_FONT_BODY, C_MUTED);
+            lv_obj_align(info, LV_ALIGN_LEFT_MID, 10, 10);
+            if (selected) lv_obj_set_style_text_color(info, lv_color_hex(C_GOLD), 0);
+        }
+        add_hint(scr, "上/下 选择 · 确定 连接", 262);
+        add_hint(scr, "长按确定 返回", 288);
+        return;
+    }
+
+    if (view->state == ARCHERY_WIFI_CONNECTING) {
+        centered_label(scr, "正在连接", ARCHERY_FONT_TITLE, C_TEXT, 96);
+        centered_label(scr, view->ssid[view->selected][0] ? view->ssid[view->selected]
+                                                         : "选中的网络",
+                       ARCHERY_FONT_BODY, C_GOLD, 136);
+        centered_label(scr, "请稍候…", ARCHERY_FONT_BODY, C_MUTED, 170);
+        add_hint(scr, "长按确定 取消", 284);
+        return;
+    }
+
+    // 菜单 / 状态
+    const bool connected = view->sta_connected;
+    const archery_rect_t status = {14, 40, 212, 40};
+    lv_obj_t *card = make_card(scr, status, false, false);
+    lv_obj_t *name = make_label(card, connected ? "已连接" : "未连接", ARCHERY_FONT_BODY,
+                                connected ? C_GOLD : C_MUTED);
+    lv_obj_align(name, LV_ALIGN_LEFT_MID, 10, -8);
+    char detail[64];
+    if (connected) {
+        snprintf(detail, sizeof(detail), "%s", view->ip[0] ? view->ip : "获取 IP 中");
+    } else if (view->message[0]) {
+        snprintf(detail, sizeof(detail), "%s", view->message);
+    } else {
+        snprintf(detail, sizeof(detail), "选择下面的方式连接 Wi-Fi");
+    }
+    lv_obj_t *info = make_label(card, detail, ARCHERY_FONT_BODY, C_MUTED);
+    lv_obj_align(info, LV_ALIGN_LEFT_MID, 10, 10);
+
+    static const char *rows[] = {"扫描网络", "手机扫码配网", "立即对时", "断开连接", "返回"};
+    for (uint8_t row = 0; row < 5; row++) {
+        const archery_rect_t rect = {20, (int16_t)(88 + row * 34), 200, 30};
+        const bool selected = flow->wifi_row == row;
+        lv_obj_t *item = make_card(scr, rect, selected, false);
+        lv_obj_t *label = make_label(item, rows[row], ARCHERY_FONT_BODY,
+                                     selected ? C_GOLD : C_TEXT);
+        lv_obj_center(label);
+    }
+    add_hint(scr, "上/下 选择 · 确定 执行", 260);
+    if (view->time_synced) {
+        add_hint(scr, "已通过网络校准时间", 286);
+    } else {
+        add_hint(scr, "1.0.0 · 长按确定 返回主页", 286);
+    }
+}
+// 设备端 Wi-Fi 密码输入：上/下换字符，确定下一位，空位确定即连接。
+static void render_wifi_password(lv_obj_t *scr, const archery_flow_t *flow) {
+    add_title(scr, "密码");
+    const archery_wifi_view_t *view = s_wifi_view;
+    if (view && flow->wifi_target < view->ap_count) {
+        centered_label(scr, view->ssid[flow->wifi_target], ARCHERY_FONT_BODY, C_GOLD, 38);
+    }
+
+    char shown[24];
+    uint8_t n = 0;
+    const uint8_t start = flow->wifi_pw_pos >= 18u
+                              ? (uint8_t)(flow->wifi_pw_pos - 17u) : 0u;
+    for (uint8_t i = start; i < flow->wifi_pw_len && n < 18u; i++) {
+        shown[n++] = flow->wifi_password[i];
+    }
+    if (flow->wifi_pw_pos == flow->wifi_pw_len || n < 18u) shown[n++] = '_';
+    shown[n] = '\0';
+    lv_obj_t *pw = make_label(scr, shown, ARCHERY_FONT_NUMBER, C_TEXT);
+    lv_obj_align(pw, LV_ALIGN_TOP_MID, 0, 86);
+
+    char line[48];
+    snprintf(line, sizeof(line), "第 %u 位", (unsigned)(flow->wifi_pw_pos + 1u));
+    centered_label(scr, line, ARCHERY_FONT_BODY, C_MUTED, 128);
+
+    if (flow->wifi_pw_pos < flow->wifi_pw_len) {
+        snprintf(line, sizeof(line), "当前字符 %c",
+                 flow->wifi_password[flow->wifi_pw_pos]);
+        centered_label(scr, line, ARCHERY_FONT_TITLE, C_GOLD, 160);
+    } else if (flow->wifi_pw_len > 0) {
+        centered_label(scr, "确定 连接", ARCHERY_FONT_TITLE, C_GOLD, 160);
+    } else {
+        centered_label(scr, "上/下 选择第一个字符", ARCHERY_FONT_BODY, C_MUTED, 160);
+    }
+
+    add_hint(scr, "上/下 换字符 · 确定 下一位", 212);
+    add_hint(scr, "长按 删除 · 首位长按返回", 238);
+    add_hint(scr, "长按上/下 快速换字符", 264);
+}
+
 // 设置：靶子类型 / 屏幕方向 / 亮度 / 息屏时间 / 日期时间 / 返回。
 // 调整立即生效，离开时写 NVS；"日期时间"进入单独的手动对时页。
 static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
@@ -672,8 +856,11 @@ void archery_ui_show(const archery_flow_t *flow, const archery_history_t *histor
     case ARCHERY_PAGE_ABORT_CONFIRM: render_confirm(scr, flow, history, true); break;
     case ARCHERY_PAGE_SETTINGS: render_settings(scr, flow); break;
     case ARCHERY_PAGE_CLOCK: render_clock(scr, flow); break;
+    case ARCHERY_PAGE_WIFI: render_wifi(scr, flow); break;
+    case ARCHERY_PAGE_WIFI_PASSWORD: render_wifi_password(scr, flow); break;
     }
     add_battery(scr, battery_soc);
+    add_status_bar(scr, flow, s_wifi_view);
     lv_screen_load(scr);
     if (previous) lv_obj_delete(previous);
 }

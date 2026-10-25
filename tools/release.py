@@ -133,6 +133,19 @@ def api(method, url, token, data=None, raw=None, content_type="application/json"
         return error.code, payload
 
 
+def read_token():
+    """Return the GitHub token from GH_TOKEN or the git credential store."""
+    token = os.environ.get("GH_TOKEN")
+    if token:
+        return token.strip()
+    store = Path.home() / ".config" / "git" / "github-credentials"
+    if store.exists():
+        match = re.search(r"x-access-token:([^@\s]+)@", store.read_text(encoding="utf-8"))
+        if match:
+            return match.group(1)
+    return None
+
+
 def release_body(version, sha):
     section = changelog_section(version) or f"## {version}"
     return (
@@ -225,9 +238,9 @@ def cmd_tag(args):
 
 
 def cmd_github(args):
-    token = os.environ.get("GH_TOKEN")
+    token = read_token()
     if not token:
-        raise SystemExit("set GH_TOKEN to a token with repository release access")
+        raise SystemExit("no GitHub token: set GH_TOKEN or store one with git credential")
     version, _ = read_version()
     tag = args.tag
     repo = args.repo or remote_repo()

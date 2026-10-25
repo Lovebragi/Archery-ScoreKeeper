@@ -46,10 +46,14 @@ python tools/release.py github        # 创建/更新 Release 并上传固件
 `bump` 会更新 `main/archery_version.h`，并把新的更新日志段插到最前面；它不会
 提交、构建或打标签，先审阅改动。
 
-`github` 从 `GH_TOKEN` 读取令牌、从 `git remote get-url origin` 读取仓库；标签
-`v<版本>` 不存在时创建 Release，然后上传
-`build/FoloToy-AI-Passport-full.bin`，同名附件会被替换。GitHub 直连不可用时
-设置 `HTTPS_PROXY`。
+`github` 从 `GH_TOKEN` 或 git 凭据存储（`~/.config/git/github-credentials`）读取
+令牌，从 `git remote get-url origin` 读取仓库；标签 `v<版本>` 不存在时创建
+Release，然后上传 `build/FoloToy-AI-Passport-full.bin`，同名附件会被替换。
+GitHub 直连不可用时设置 `HTTPS_PROXY`。
+
+不想把令牌贴进终端或对话时，可以用 GitHub CLI 的设备码流程
+（`gh auth login --web` 或等价的 OAuth device flow）授权，再用
+`git credential approve` 保存；不用时到 GitHub 设置里撤销。
 
 ## 发布检查单
 
@@ -65,7 +69,9 @@ python tools/release.py github        # 创建/更新 Release 并上传固件
 
 ## 密钥与授权
 
-- 不要在仓库里提交令牌、授权码或凭据。GitHub 令牌只放 `GH_TOKEN` 环境变量；
-  社区发布助手的凭据保存在仓库外。
+- 不要在仓库里提交令牌、授权码或凭据。GitHub 令牌放 `GH_TOKEN` 或仓库外的
+  git 凭据存储；社区发布助手的凭据同样保存在仓库外。
 - 社区更新需要项目专属的一次性授权码，工具不能绕过。
 - 已有公开 Release 的标签不要重写或移动；需要变化时升版本。
+- git 凭据文件是受文件权限保护的明文；只允许你的账号读取，能使用短期
+  fine-grained token 时优先用它。

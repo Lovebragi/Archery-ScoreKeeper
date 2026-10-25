@@ -70,10 +70,13 @@ with the same name. Set `HTTPS_PROXY` when GitHub is not directly reachable.
 
 ## Secrets and authorization
 
-- Never commit tokens, grants or credentials. Put the GitHub token in the
-  `GH_TOKEN` environment variable only; the community publisher keeps its
-  credentials outside the repository.
+- Never commit tokens, grants or credentials. Keep the GitHub token in
+  `GH_TOKEN` or in the git credential store outside the repository; the
+  community publisher keeps its credentials outside the repository too.
 - Community updates need a fresh one-time authorization code issued for the
   project; the tooling cannot bypass it.
 - Do not rewrite or move an existing tag that has a published release; bump the
   version instead.
+- The git credential file is plain text protected by filesystem permissions.
+  Restrict it to your account and prefer a short-lived fine-grained token when
+  the workflow allows it.

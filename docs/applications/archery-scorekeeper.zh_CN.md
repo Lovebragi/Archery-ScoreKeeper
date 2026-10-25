@@ -150,3 +150,8 @@ source <path-to-esp-idf-v5.5.3>/export.sh
 - 固件门禁验证合并镜像的分区布局与偏移。
 - 本环境未验证：真机显示效果（含 180° 方向与中文字形）、ADC 按键手感、电量计
   精度、倒装屏幕的机械适配，这些需要实体设备。
+
+## 相关文档
+
+- [更新日志](archery-scorekeeper-changelog.zh_CN.md)
+- [发布管理](../development/release/archery-release.zh_CN.md)

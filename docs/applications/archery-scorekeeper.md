@@ -181,3 +181,8 @@ The firmware gate writes the merged image for offset `0x0` to
 - Not verified here: real on-device rendering (including the 180° orientation and
   Chinese glyphs), the ADC button feel, battery gauge accuracy, and mechanical
   fit of the inverted screen. These require the physical device.
+
+## Related documents
+
+- [Application changelog](archery-scorekeeper-changelog.md)
+- [Release management](../development/release/archery-release.md)

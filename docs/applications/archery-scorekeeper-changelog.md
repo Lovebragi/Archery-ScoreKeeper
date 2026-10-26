@@ -8,6 +8,14 @@ Release history for the archery scorekeeper application. The repository-wide
 [changelog](../CHANGELOG.md) tracks the AI Passport project itself; this file
 follows the application's firmware versions.
 
+## 1.2.2 — 2026-10-26
+
+### Fixed
+
+- The phone setup page no longer lets a mobile keyboard capitalize the Wi-Fi
+  name or password field, and disables autocorrect, spellcheck and password
+  autofill there.
+
 ## 1.2.1 — 2026-10-26
 
 ### Fixed

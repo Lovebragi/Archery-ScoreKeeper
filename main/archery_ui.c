@@ -236,16 +236,17 @@ static void render_home(lv_obj_t *scr, const archery_flow_t *flow) {
              target_ring_range(flow->settings.target));
     centered_label(scr, range, ARCHERY_FONT_BODY, C_MUTED, 156);
 
-    static const char *items[ARCHERY_HOME_ITEMS] = {"开始训练", "历史记录", "设置", "联网"};
+    static const char *items[ARCHERY_HOME_ITEMS] = {"开始训练", "历史记录", "日期时间",
+                                                    "设置", "联网"};
     for (uint8_t i = 0; i < ARCHERY_HOME_ITEMS; i++) {
-        const archery_rect_t rect = {32, (int16_t)(180 + i * 26), 176, 24};
+        const archery_rect_t rect = {32, (int16_t)(168 + i * 24), 176, 22};
         const bool selected = flow->home_select == i;
         lv_obj_t *card = make_card(scr, rect, selected, false);
         lv_obj_t *label = make_label(card, items[i], ARCHERY_FONT_BODY,
                                      selected ? C_GOLD : C_TEXT);
         lv_obj_center(label);
     }
-    add_hint(scr, "上/下 选择 · 确定 进入", 290);
+    add_hint(scr, "上/下 选择 · 确定 进入", 294);
 }
 
 static void render_setup(lv_obj_t *scr, const archery_flow_t *flow) {
@@ -759,7 +760,7 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
 
     static const char *row_names[] = {"靶子类型", "屏幕方向", "屏幕亮度",
                                       "息屏时间", "记录内十", "语音输入",
-                                      "提示音量", "保存Wi-Fi密码", "日期时间"};
+                                      "提示音量", "保存Wi-Fi密码"};
     char value[24];
     const uint8_t visible = 6;
     uint8_t offset = flow->settings_row >= visible ? (uint8_t)(flow->settings_row - visible + 1u) : 0u;
@@ -800,10 +801,6 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
         } else if (row == 7) {
             snprintf(value, sizeof(value), "%s",
                      flow->settings.wifi_save ? "开" : "关");
-        } else if (!flow->clock_set) {
-            snprintf(value, sizeof(value), "未校准");
-        } else {
-            archery_clock_format_short(flow->clock_now, value, sizeof(value));
         }
         lv_obj_t *number = make_label(card, value, ARCHERY_FONT_BODY,
                                       selected ? C_GOLD : C_TEXT);

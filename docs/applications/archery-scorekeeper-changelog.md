@@ -8,6 +8,16 @@ Release history for the archery scorekeeper application. The repository-wide
 [changelog](../CHANGELOG.md) tracks the AI Passport project itself; this file
 follows the application's firmware versions.
 
+## 1.3.3 — 2026-10-27
+
+### Changed
+
+- Date/time moved from Settings to the home screen, right below History; the
+  home menu now has five entries and saving the clock returns home. Settings is
+  down to eight rows.
+- Fixed the abort/clear confirmation title sitting too high and overlapping the
+  status bar.
+
 ## 1.3.2 — 2026-10-27
 
 ### Added

@@ -10,8 +10,8 @@
 #include <stdint.h>
 
 // 设置页行数：0 = 靶子类型，1 = 屏幕方向，2 = 屏幕亮度，3 = 息屏时间，
-// 4 = 记录内十，5 = 语音输入开关，6 = 提示音量，7 = 保存 Wi-Fi 密码，8 = 日期时间。
-#define ARCHERY_SETTINGS_ROWS 9u
+// 4 = 记录内十，5 = 语音输入开关，6 = 提示音量，7 = 保存 Wi-Fi 密码。
+#define ARCHERY_SETTINGS_ROWS 8u
 
 #define ARCHERY_SETTINGS_DEFAULT_BRIGHTNESS 20u
 #define ARCHERY_SETTINGS_DEFAULT_OFF_SECONDS 15u

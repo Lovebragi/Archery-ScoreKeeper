@@ -207,7 +207,7 @@ Source font and license are recorded in [`assets/README.md`](../../assets/README
 
 ## Power behaviour
 
-The home screen has a third entry, Settings, with these controls:
+The home screen also has Settings, with these controls:
 
 | Setting | Values | Default |
 | --- | --- | --- |
@@ -219,14 +219,14 @@ The home screen has a third entry, Settings, with these controls:
 | Voice input | On / Off | On |
 | Beep volume | 0 / 20 / 40 / 60 / 80 / 100% | 60% |
 | Save Wi-Fi passwords | On / Off | On |
-| Date/time | Local wall clock, set by hand | Build time until calibrated |
 
 The rows are listed top to bottom; the settings page shows six rows at a time and
 scrolls when the cursor leaves the window, with the current range shown at the
-top (for example `1-6 / 9`). Date/time is the last row and OK opens the manual
-clock page. With voice input off, the entry screen keeps only the keypad hint
-and holding up never records. Beep volume 0% is mute; each adjustment in
-Settings plays one preview beep at the new level.
+top (for example `1-6 / 8`). Date/time is no longer in Settings: the home screen
+has a Date/time entry below History, and saving it returns home. With voice
+input off, the entry screen keeps only the keypad hint and holding up never
+records. Beep volume 0% is mute; each adjustment in Settings plays one preview
+beep at the new level.
 
 ### Wi-Fi memory and security
 

@@ -27,7 +27,7 @@ typedef enum {
 } archery_page_t;
 
 // 主页入口数：开始训练 / 历史记录 / 设置 / 联网。
-#define ARCHERY_HOME_ITEMS 4u
+#define ARCHERY_HOME_ITEMS 5u
 
 // 录入页行数上限：最多 12 个环值槽位 + 1 行"确认提交"。
 #define ARCHERY_ENTRY_ROWS_MAX (ARCHERY_RING_SLOT_MAX + 1u)
@@ -86,7 +86,7 @@ typedef struct {
     uint8_t setup_arrows;   // 每组箭数，默认 6
     uint8_t setup_row;      // 0 = 组数, 1 = 每组箭数, 2..4 = 上/中/下, 最后 = 开始
     uint8_t setup_face[ARCHERY_FACES];  // 三联靶上/中/下各几根箭
-    uint8_t home_select;    // 0 = 开始训练, 1 = 历史记录, 2 = 设置
+    uint8_t home_select;    // 0 = 开始训练, 1 = 历史记录, 2 = 日期时间, 3 = 设置, 4 = 联网
     uint16_t history_count; // 由上层同步：当前筛选下的记录数
     uint16_t history_cursor; // 0..count+1（count = 清空行，count+1 = 返回行）
     uint8_t history_filter; // archery_history_filter_t

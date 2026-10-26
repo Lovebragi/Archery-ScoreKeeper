@@ -35,6 +35,9 @@ bool archery_target_valid(uint8_t target);
 uint8_t archery_target_slot_count(uint8_t target);
 uint8_t archery_target_slot_code(uint8_t target, uint8_t slot);
 
+// 录入页第一个可见槽位：关闭"记录内十"时跳过槽位 0（X），从 10 环开始。
+uint8_t archery_target_entry_first_slot(uint8_t target, bool record_x);
+
 // 环值是否合法。0..10 与 X 都合法；越界值按"数据损坏"处理。
 bool archery_score_valid(uint8_t code);
 

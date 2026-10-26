@@ -282,6 +282,41 @@ static void test_full_target_entry(void) {
     assert(archery_session_group_miss(&flow.session, 0) == 1);
 }
 
+static void test_entry_without_x(void) {
+    archery_flow_t flow;
+    archery_flow_init(&flow);
+    archery_settings_t settings;
+    archery_settings_defaults(&settings);
+    settings.target = ARCHERY_TARGET_FULL_40;
+    settings.record_x = 0;  // 关闭"记录内十"：录入页从 10 环开始
+    archery_flow_set_settings(&flow, &settings);
+
+    start_session(&flow, 1, 2);
+    assert(flow.entry_row == 0);
+    assert(archery_target_entry_first_slot(ARCHERY_TARGET_FULL_40, 0) == 1);
+    assert(archery_target_entry_first_slot(ARCHERY_TARGET_FULL_40, 1) == 0);
+
+    // 第 0 行就是 10 环（槽位 1），而不是 X（槽位 0）
+    press(&flow, ARCHERY_KEY_UP);
+    assert(flow.counts[0][1] == 1);
+    assert(flow.counts[0][0] == 0);
+
+    // 走到最后一个可见行（0 环，槽位 11）
+    for (int i = 0; i < 10; i++) press(&flow, ARCHERY_KEY_OK);
+    assert(flow.entry_row == 10);
+    press(&flow, ARCHERY_KEY_UP);
+    assert(flow.counts[0][11] == 1);
+    assert(archery_counts_total(flow.counts[0]) == 2);
+
+    // 记满跳到提交行（可见行号 11）并提交；X 槽位始终为 0
+    press(&flow, ARCHERY_KEY_OK);
+    assert(flow.entry_row == 11);
+    press(&flow, ARCHERY_KEY_OK);
+    assert(flow.page == ARCHERY_PAGE_SUMMARY);
+    assert(archery_session_total_x(&flow.session) == 0);
+    assert(archery_session_group_miss(&flow.session, 0) == 1);
+}
+
 static void test_triple_target_setup_and_entry(void) {
     archery_flow_t flow;
     archery_flow_init(&flow);
@@ -422,9 +457,16 @@ static void test_settings_page(void) {
     assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.off_seconds == 30);
 
-    // 日期时间行：进入手动对时页并保存
+    // 记录内十：默认开，切换为关
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.settings_row == 4);
+    assert(flow.settings.record_x == 1);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(flow.settings.record_x == 0);
+
+    // 日期时间行：进入手动对时页并保存
+    press(&flow, ARCHERY_KEY_OK);
+    assert(flow.settings_row == 5);
     archery_flow_set_clock(&flow, 0x2B3A4C5Du, true);  // 2026-10-25 14:32 附近
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.page == ARCHERY_PAGE_CLOCK);
@@ -441,9 +483,9 @@ static void test_settings_page(void) {
     press(&flow, ARCHERY_KEY_UP);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_CLOCK_SAVE);
     assert(flow.page == ARCHERY_PAGE_SETTINGS);
-    assert(flow.settings_row == 5);
+    assert(flow.settings_row == ARCHERY_SETTINGS_ROWS);
 
-    // 返回行：确定保存并回主页
+    // 返回位置：确定保存并回主页
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_SAVE);
     assert(flow.page == ARCHERY_PAGE_HOME);
 
@@ -454,19 +496,20 @@ static void test_settings_page(void) {
     press(&flow, ARCHERY_KEY_OK);  // 方向行
     press(&flow, ARCHERY_KEY_OK);  // 亮度行
     press(&flow, ARCHERY_KEY_OK);  // 息屏行
+    press(&flow, ARCHERY_KEY_OK);  // 记录内十行
     press(&flow, ARCHERY_KEY_OK);  // 日期时间行
-    assert(flow.settings_row == 4);
+    assert(flow.settings_row == 5);
     press(&flow, ARCHERY_KEY_OK);  // 进入对时页
     assert(flow.page == ARCHERY_PAGE_CLOCK);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) == ARCHERY_ACT_CLOCK_SAVE);
     assert(flow.page == ARCHERY_PAGE_SETTINGS);
-    assert(flow.settings_row == 5);
+    assert(flow.settings_row == ARCHERY_SETTINGS_ROWS);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) == ARCHERY_ACT_SETTINGS_SAVE);
     assert(flow.page == ARCHERY_PAGE_HOME);
 
     // 用 NVS 读到的设置覆盖副本
     archery_settings_t stored = {.target = ARCHERY_TARGET_FULL_122, .rotate = 0,
-                                 .brightness = 40, .off_seconds = 120};
+                                 .brightness = 40, .off_seconds = 120, .record_x = 1};
     archery_flow_set_settings(&flow, &stored);
     assert(flow.settings.target == ARCHERY_TARGET_FULL_122);
     assert(flow.settings.rotate == 0);
@@ -690,6 +733,7 @@ int main(void) {
     test_abort_paths();
     test_button_role_rotation();
     test_full_target_entry();
+    test_entry_without_x();
     test_triple_target_setup_and_entry();
     test_settings_page();
     test_history_pages();

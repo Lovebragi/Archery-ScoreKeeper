@@ -8,6 +8,18 @@ Release history for the archery scorekeeper application. The repository-wide
 [changelog](../CHANGELOG.md) tracks the AI Passport project itself; this file
 follows the application's firmware versions.
 
+## 1.2.3 — 2026-10-26
+
+### Added
+
+- Settings can turn off "Record inner ten": the entry screen then starts at the
+  10 ring and the X count is no longer shown.
+
+### Changed
+
+- Every target now reports a miss as 0 instead of showing "miss" on half faces;
+  statistics still call it a miss.
+
 ## 1.2.2 — 2026-10-26
 
 ### Fixed

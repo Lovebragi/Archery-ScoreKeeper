@@ -44,6 +44,12 @@ uint8_t archery_target_slot_code(uint8_t target, uint8_t slot) {
     }
 }
 
+uint8_t archery_target_entry_first_slot(uint8_t target, bool record_x) {
+    if (record_x || !archery_target_valid(target)) return 0;
+    // 所有靶型的槽位 0 都是 X；不记录内十时把这一行从录入页隐藏。
+    return archery_target_slot_code(target, 0) == ARCHERY_SCORE_X ? 1u : 0u;
+}
+
 bool archery_score_valid(uint8_t code) {
     return code <= ARCHERY_SCORE_RING_MAX || code == ARCHERY_SCORE_X;
 }

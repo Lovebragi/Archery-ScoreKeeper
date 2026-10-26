@@ -4,7 +4,8 @@
 #include <string.h>
 
 #define SETTINGS_MAGIC 0x5Au
-#define SETTINGS_VERSION 3u
+#define SETTINGS_VERSION 4u
+#define SETTINGS_VERSION_V3 3u
 #define SETTINGS_VERSION_V2 2u
 #define SETTINGS_VERSION_V1 1u
 #define SETTINGS_CRC_BYTES_V3 8u
@@ -41,6 +42,7 @@ void archery_settings_defaults(archery_settings_t *settings) {
     settings->rotate = ARCHERY_SETTINGS_DEFAULT_ROTATE;
     settings->brightness = ARCHERY_SETTINGS_DEFAULT_BRIGHTNESS;
     settings->off_seconds = ARCHERY_SETTINGS_DEFAULT_OFF_SECONDS;
+    settings->record_x = 1u;
 }
 
 uint8_t archery_settings_target_count(void) { return TARGET_COUNT; }
@@ -83,7 +85,8 @@ bool archery_settings_valid(const archery_settings_t *settings) {
            target_index(settings->target) >= 0 &&
            settings->rotate <= 1u &&
            brightness_index(settings->brightness) >= 0 &&
-           off_index(settings->off_seconds) >= 0;
+           off_index(settings->off_seconds) >= 0 &&
+           settings->record_x <= 1u;
 }
 
 bool archery_settings_adjust(archery_settings_t *settings, uint8_t row, int delta) {
@@ -119,6 +122,13 @@ bool archery_settings_adjust(archery_settings_t *settings, uint8_t row, int delt
         settings->off_seconds = s_off_seconds[next];
         return true;
     }
+    if (row == 4) {
+        // 记录内十：开/关两态，任一方向都相当于切换。
+        const uint8_t next = settings->record_x ? 0u : 1u;
+        if (next == settings->record_x) return false;
+        settings->record_x = next;
+        return true;
+    }
     return false;
 }
 
@@ -133,7 +143,7 @@ size_t archery_settings_encode(const archery_settings_t *settings,
     buffer[4] = settings->brightness;
     buffer[5] = (uint8_t)(settings->off_seconds & 0xFFu);
     buffer[6] = (uint8_t)(settings->off_seconds >> 8);
-    buffer[7] = 0;  // 保留
+    buffer[7] = settings->record_x;  // v4：是否在录入页记录内十
     const uint16_t crc = crc16_ccitt(buffer, SETTINGS_CRC_BYTES_V3);
     buffer[8] = (uint8_t)(crc & 0xFFu);
     buffer[9] = (uint8_t)(crc >> 8);
@@ -149,6 +159,7 @@ static bool decode_v1(archery_settings_t *settings, const uint8_t *buffer) {
     decoded.rotate = ARCHERY_SETTINGS_DEFAULT_ROTATE;
     decoded.brightness = buffer[2];
     decoded.off_seconds = (uint16_t)(buffer[3] | ((uint16_t)buffer[4] << 8));
+    decoded.record_x = 1u;
     if (!archery_settings_valid(&decoded)) return false;
     *settings = decoded;
     return true;
@@ -163,6 +174,7 @@ static bool decode_v2(archery_settings_t *settings, const uint8_t *buffer) {
     decoded.rotate = ARCHERY_SETTINGS_DEFAULT_ROTATE;
     decoded.brightness = buffer[3];
     decoded.off_seconds = (uint16_t)(buffer[4] | ((uint16_t)buffer[5] << 8));
+    decoded.record_x = 1u;
     if (!archery_settings_valid(&decoded)) return false;
     *settings = decoded;
     return true;
@@ -179,6 +191,7 @@ bool archery_settings_decode(archery_settings_t *settings,
         return length == ARCHERY_SETTINGS_ENCODED_BYTES_V1 && decode_v1(settings, buffer);
     case SETTINGS_VERSION_V2:
         return length == ARCHERY_SETTINGS_ENCODED_BYTES_V2 && decode_v2(settings, buffer);
+    case SETTINGS_VERSION_V3:
     case SETTINGS_VERSION:
         break;
     default:
@@ -193,6 +206,8 @@ bool archery_settings_decode(archery_settings_t *settings,
     decoded.rotate = buffer[3];
     decoded.brightness = buffer[4];
     decoded.off_seconds = (uint16_t)(buffer[5] | ((uint16_t)buffer[6] << 8));
+    // v3 没有记录内十字段，保留旧行为（记录 X）。
+    decoded.record_x = buffer[1] == SETTINGS_VERSION_V3 ? 1u : buffer[7];
     if (!archery_settings_valid(&decoded)) return false;
     *settings = decoded;
     return true;

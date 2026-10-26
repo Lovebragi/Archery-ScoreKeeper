@@ -374,15 +374,15 @@ static archery_act_t handle_clock(archery_flow_t *flow, archery_key_t key) {
         if (flow->clock_row + 1u < ARCHERY_CLOCK_ROWS) {
             flow->clock_row++;
         } else {
-            // 分字段按确定 = 保存对时并回到设置页的"返回"行。
+            // 分字段按确定 = 保存对时并回到设置页的"返回"位置。
             flow->page = ARCHERY_PAGE_SETTINGS;
-            flow->settings_row = 5;
+            flow->settings_row = ARCHERY_SETTINGS_ROWS;
             return ARCHERY_ACT_CLOCK_SAVE;
         }
         break;
     case ARCHERY_KEY_OK_LONG:
         flow->page = ARCHERY_PAGE_SETTINGS;
-        flow->settings_row = 5;
+        flow->settings_row = ARCHERY_SETTINGS_ROWS;
         return ARCHERY_ACT_CLOCK_SAVE;
     }
     return ARCHERY_ACT_NONE;
@@ -392,7 +392,7 @@ static archery_act_t handle_settings(archery_flow_t *flow, archery_key_t key) {
     switch (key) {
     case ARCHERY_KEY_UP:
     case ARCHERY_KEY_DOWN:
-        if (flow->settings_row < 4 &&
+        if (flow->settings_row < 5 &&
             archery_settings_adjust(&flow->settings, flow->settings_row,
                                     key == ARCHERY_KEY_UP ? 1 : -1)) {
             // 靶型在下一组开始时生效；方向/亮度立即生效；息屏时间立即被空闲计时采用。
@@ -400,7 +400,7 @@ static archery_act_t handle_settings(archery_flow_t *flow, archery_key_t key) {
         }
         break;
     case ARCHERY_KEY_OK:
-        if (flow->settings_row == 4) {
+        if (flow->settings_row == 5) {
             // 进入手动对时页：以当前时钟为初值。
             archery_seconds_to_datetime(flow->clock_now, &flow->clock_fields);
             flow->clock_row = 0;
@@ -466,23 +466,27 @@ static archery_act_t handle_entry(archery_flow_t *flow, archery_key_t key) {
     const bool faces = archery_flow_target_has_faces(flow->session.target);
     const uint8_t face = faces ? flow->entry_face : 0;
     const uint8_t slots = archery_target_slot_count(flow->session.target);
+    // 关闭"记录内十"时，录入页从 10 环开始；entry_row 是可见行号，槽位要加上偏移。
+    const uint8_t first = archery_target_entry_first_slot(flow->session.target,
+                                                          flow->settings.record_x);
+    const uint8_t visible = (uint8_t)(slots - first);
     const uint8_t face_arrows = faces ? flow->setup_face[face] : flow->session.arrows;
     uint8_t *counts = flow->counts[face];
 
     switch (key) {
     case ARCHERY_KEY_UP:
     case ARCHERY_KEY_DOWN:
-        if (flow->entry_row < slots) {
-            archery_counts_adjust(counts, flow->entry_row,
+        if (flow->entry_row < visible) {
+            archery_counts_adjust(counts, (uint8_t)(first + flow->entry_row),
                                   key == ARCHERY_KEY_UP ? 1 : -1,
                                   face_arrows, flow->session.target);
         }
         break;
     case ARCHERY_KEY_OK:
-        if (flow->entry_row < slots) {
+        if (flow->entry_row < visible) {
             // 该靶面的箭数已经凑满：直接落到提交行。
             if (archery_counts_total(counts) == face_arrows) {
-                flow->entry_row = slots;
+                flow->entry_row = visible;
             } else {
                 flow->entry_row++;
             }
@@ -509,7 +513,7 @@ static archery_act_t handle_entry(archery_flow_t *flow, archery_key_t key) {
             flow->entry_row--;
         } else if (faces && flow->entry_face > 0) {
             flow->entry_face--;
-            flow->entry_row = slots;
+            flow->entry_row = visible;
         } else {
             flow->abort_return = ARCHERY_PAGE_ENTRY;
             flow->confirm_yes = false;

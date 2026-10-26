@@ -19,13 +19,15 @@ The app supports five target faces, chosen in Settings:
 
 | Target | Printed rings | Entry values |
 | --- | --- | --- |
-| 40 cm half target | 6…10 plus the inner ten | X, 10, 9, 8, 7, 6, miss |
-| Three-spot 40 cm half target | three half faces, same ring values | X, 10, 9, 8, 7, 6, miss |
+| 40 cm half target | 6…10 plus the inner ten | X, 10, 9, 8, 7, 6, 0 |
+| Three-spot 40 cm half target | three half faces, same ring values | X, 10, 9, 8, 7, 6, 0 |
 | 40 cm full target | 0…10 plus the inner ten | X, 10, 9 … 1, 0 |
 | 80 cm full target | 0…10 plus the inner ten | X, 10, 9 … 1, 0 |
 | 122 cm full target | 0…10 plus the inner ten | X, 10, 9 … 1, 0 |
 
-On the full faces the 0 ring is the miss. The three-spot target keeps three
+Every face records a miss as 0. With "Record inner ten" turned off in Settings the
+entry screen omits the X row and a ten also covers the inner ten. The three-spot
+target keeps three
 separate faces: the setup screen asks for the group size plus how many arrows go
 to the upper, middle and lower face (default 2 / 2 / 2, and their sum must equal
 the group size), and the entry screen then records one face at a time before
@@ -59,7 +61,7 @@ immediately.
 | --- | --- | --- | --- | --- |
 | Home | Target rings, four entries, clock and network status, battery | Select entry | Enter | – |
 | Setup | Group count, arrows per group, per-face arrows for the three-spot target, start | Adjust the focused value | Next field / start | Previous field (back to home on the first row) |
-| Settings | Target type, screen orientation, screen brightness, screen-off time, date/time, back | Adjust the focused value | Next field / open date-time / save and back | Save and back |
+| Settings | Target type, screen orientation, screen brightness, screen-off time, record inner ten, date/time | Adjust the focused value | Next field / open date-time / save and back | Save and back |
 | Entry | Two-column ring tally for the current group and a commit row (one face at a time for the three-spot target) | Change the highlighted ring's arrow count | Next ring / commit row | Previous ring (abandon confirmation on the first row) |
 | Summary | Finished group, running total, group dots | – | Next group / summary | Abandon confirmation |
 | Finish | Session total, average, X/M, save state | – | Back to home | Back to home |
@@ -71,8 +73,8 @@ immediately.
 | Date/time | Year, month, day, hour, minute | Adjust the focused field | Next field / save | Save |
 
 A group is recorded as "how many arrows landed on each ring" instead of
-arrow-by-arrow: the entry screen lists X, 10, 9, 8, 7, 6 and miss, each with a
-count. The counts start at zero and must add up to the arrows per group before
+arrow-by-arrow: the entry screen lists X (unless "Record inner ten" is off),
+10, 9, 8, 7, 6 and 0, each with a count. The counts start at zero and must add up to the arrows per group before
 the commit row accepts OK, so the running total accumulates from zero instead of
 starting from a full-house maximum. The commit row shows either the remaining
 arrow count or the group's ring total. As soon as the counts add up, OK jumps
@@ -152,7 +154,7 @@ Source font and license are recorded in [`assets/README.md`](../../assets/README
 
 ## Power behaviour
 
-The home screen has a third entry, Settings, with five controls:
+The home screen has a third entry, Settings, with these controls:
 
 | Setting | Values | Default |
 | --- | --- | --- |
@@ -160,6 +162,7 @@ The home screen has a third entry, Settings, with five controls:
 | Screen orientation | Inverted / Normal | Inverted |
 | Screen brightness | 20 / 40 / 60 / 80 / 100% | 20% |
 | Screen-off time | 0 / 15 / 30 / 60 / 120 s (`0` keeps the screen on) | 15 s |
+| Record inner ten | On / Off | On |
 | Date/time | Local wall clock, set by hand | Build time until calibrated |
 
 After the configured idle time the application turns the backlight off, disables

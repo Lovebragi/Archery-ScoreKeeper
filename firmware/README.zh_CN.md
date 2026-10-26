@@ -4,11 +4,11 @@
 
 # 预编译固件
 
-`FoloToy-AI-Passport-full.bin` 是射箭计分器 v1.2.2 的合并镜像（bootloader +
+`FoloToy-AI-Passport-full.bin` 是射箭计分器 v1.2.3 的合并镜像（bootloader +
 分区表 + 应用）。
 
 - 目标：ESP32-C3，8 MB Flash，ESP-IDF 5.5.3
-- SHA-256：`452e1da586766280cec57a3d9b09e1b4511dc27da320ddbdc12880ece97e0bb5`
+- SHA-256：`e75e992f780ee6199010802c81460ceafe0d28086eaeb1abff50587d42ffb654`
 - 刷写地址：`0x0`
 
 ```bash

@@ -188,7 +188,7 @@ static void add_group_dots(lv_obj_t *scr, uint8_t groups, uint8_t done, int y) {
     }
 }
 
-// 环值槽位的界面文字：X/10..0 用数字；半靶的 0 环显示为"脱靶"，全靶显示"0"。
+// 环值槽位的界面文字：X/10..0 用数字；0 环在所有靶型上都显示为"0"。
 static const char *target_name(uint8_t target) {
     switch (target) {
     case ARCHERY_TARGET_TRIPLE_40H: return "三联靶";
@@ -208,12 +208,7 @@ static const char *target_ring_range(uint8_t target) {
 
 static const char *slot_label(uint8_t target, uint8_t slot) {
     const uint8_t code = archery_target_slot_code(target, slot);
-    if (code == ARCHERY_SCORE_MISS) {
-        if (target == ARCHERY_TARGET_HALF_40 || target == ARCHERY_TARGET_TRIPLE_40H) {
-            return "脱靶";
-        }
-        return "0";
-    }
+    if (code == ARCHERY_SCORE_MISS) return "0";
     return archery_score_text(code);
 }
 
@@ -312,6 +307,10 @@ static void render_entry(lv_obj_t *scr, const archery_flow_t *flow) {
     const bool faces = archery_flow_target_has_faces(session->target);
     const uint8_t face = faces ? flow->entry_face : 0;
     const uint8_t slots = archery_target_slot_count(session->target);
+    // 关闭"记录内十"时隐藏 X 行：录入页只显示从 10 环开始的槽位。
+    const uint8_t first = archery_target_entry_first_slot(session->target,
+                                                          flow->settings.record_x);
+    const uint8_t visible = (uint8_t)(slots - first);
     const uint8_t face_arrows = faces ? flow->setup_face[face] : session->arrows;
     static const char *face_names[ARCHERY_FACES] = {"上靶", "中靶", "下靶"};
 
@@ -327,12 +326,13 @@ static void render_entry(lv_obj_t *scr, const archery_flow_t *flow) {
     add_title(scr, title);
 
     const uint8_t *counts = flow->counts[face];
-    for (uint8_t slot = 0; slot < slots; slot++) {
-        const uint8_t row = (uint8_t)(slot / 2u);
-        const uint8_t col = (uint8_t)(slot % 2u);
+    for (uint8_t i = 0; i < visible; i++) {
+        const uint8_t slot = (uint8_t)(first + i);
+        const uint8_t row = (uint8_t)(i / 2u);
+        const uint8_t col = (uint8_t)(i % 2u);
         const archery_rect_t rect = {(int16_t)(14 + col * 110),
                                      (int16_t)(40 + row * 30), 102, 28};
-        const bool selected = flow->entry_row == slot;
+        const bool selected = flow->entry_row == i;
         lv_obj_t *cell = make_card(scr, rect, selected, false);
         lv_obj_t *name = make_label(cell, slot_label(session->target, slot),
                                     ARCHERY_FONT_BODY, selected ? C_GOLD : C_TEXT);
@@ -344,9 +344,9 @@ static void render_entry(lv_obj_t *scr, const archery_flow_t *flow) {
         lv_obj_align(count, LV_ALIGN_RIGHT_MID, -10, 0);
     }
 
-    const uint8_t slot_rows = (uint8_t)((slots + 1u) / 2u);
+    const uint8_t slot_rows = (uint8_t)((visible + 1u) / 2u);
     const archery_rect_t commit = {14, (int16_t)(40 + slot_rows * 30), 212, 28};
-    const bool commit_selected = flow->entry_row == slots;
+    const bool commit_selected = flow->entry_row == visible;
     lv_obj_t *card = make_card(scr, commit, commit_selected, false);
     const uint8_t total = archery_counts_total(counts);
     const bool ready = total == face_arrows;
@@ -421,9 +421,14 @@ static void render_finish(lv_obj_t *scr, const archery_flow_t *flow) {
 
     char average[16];
     format_average(average, sizeof(average), archery_session_average_x10(session));
-    snprintf(line, sizeof(line), "平均 %s 环 · 内十 %u · 脱靶 %u", average,
-             (unsigned)archery_session_total_x(session),
-             (unsigned)archery_session_total_miss(session));
+    if (flow->settings.record_x) {
+        snprintf(line, sizeof(line), "平均 %s 环 · 内十 %u · 脱靶 %u", average,
+                 (unsigned)archery_session_total_x(session),
+                 (unsigned)archery_session_total_miss(session));
+    } else {
+        snprintf(line, sizeof(line), "平均 %s 环 · 脱靶 %u", average,
+                 (unsigned)archery_session_total_miss(session));
+    }
     centered_label(scr, line, ARCHERY_FONT_BODY, C_MUTED, 158);
 
     snprintf(line, sizeof(line), "最佳单组 %u 环",
@@ -535,10 +540,16 @@ static void render_detail(lv_obj_t *scr, const archery_flow_t *flow,
              (unsigned)record->groups, (unsigned)record->arrows, duration);
     centered_label(scr, line, ARCHERY_FONT_BODY, C_MUTED, 36);
 
-    snprintf(line, sizeof(line), "总 %u 环 · 内十 %u · 脱靶 %u",
-             (unsigned)archery_record_total_points(record),
-             (unsigned)archery_record_total_x(record),
-             (unsigned)archery_record_total_miss(record));
+    if (archery_record_total_x(record) > 0) {
+        snprintf(line, sizeof(line), "总 %u 环 · 内十 %u · 脱靶 %u",
+                 (unsigned)archery_record_total_points(record),
+                 (unsigned)archery_record_total_x(record),
+                 (unsigned)archery_record_total_miss(record));
+    } else {
+        snprintf(line, sizeof(line), "总 %u 环 · 脱靶 %u",
+                 (unsigned)archery_record_total_points(record),
+                 (unsigned)archery_record_total_miss(record));
+    }
     centered_label(scr, line, ARCHERY_FONT_BODY, C_TEXT, 60);
 
     char group_title[32];
@@ -547,22 +558,30 @@ static void render_detail(lv_obj_t *scr, const archery_flow_t *flow,
     centered_label(scr, group_title, ARCHERY_FONT_TITLE, C_GOLD, 88);
 
     // 与录入页一致，按"每个环值几根箭"展示；全靶每行 4 项、共 3 行。
+    // 没有内十的记录不再列出"X 0"，老记录里的 X 仍按实际数据展示。
     const uint8_t slots = archery_target_slot_count(record->target);
     char counts_text[192];
     size_t used = 0;
+    uint8_t shown = 0;
     counts_text[0] = '\0';
     for (uint8_t slot = 0; slot < slots; slot++) {
-        if (slot > 0 && slot % 4u == 0) {
+        const uint8_t count = archery_record_ring_count(record, group, slot);
+        if (archery_target_slot_code(record->target, slot) == ARCHERY_SCORE_X &&
+            count == 0) {
+            continue;
+        }
+        if (shown > 0 && shown % 4u == 0) {
             used += (size_t)snprintf(&counts_text[used], sizeof(counts_text) - used, "\n");
-        } else if (slot > 0) {
+        } else if (shown > 0) {
             used += (size_t)snprintf(&counts_text[used], sizeof(counts_text) - used,
                                      " · ");
         }
         used += (size_t)snprintf(&counts_text[used], sizeof(counts_text) - used,
                                  "%s %u", slot_label(record->target, slot),
-                                 (unsigned)archery_record_ring_count(record, group, slot));
+                                 (unsigned)count);
+        shown++;
     }
-    const uint8_t lines = (uint8_t)((slots + 3u) / 4u);
+    const uint8_t lines = (uint8_t)((shown + 3u) / 4u > 0u ? (shown + 3u) / 4u : 1u);
     const archery_rect_t counts_card = {20, 124, 200,
                                         (int16_t)(lines * 24 + 16)};
     lv_obj_t *card = make_card(scr, counts_card, false, false);
@@ -570,9 +589,14 @@ static void render_detail(lv_obj_t *scr, const archery_flow_t *flow,
     lv_obj_set_style_text_align(counts, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(counts);
 
-    snprintf(line, sizeof(line), "本组 %u 环 · 内十 %u",
-             (unsigned)archery_record_group_points(record, group),
-             (unsigned)archery_record_group_x(record, group));
+    if (archery_record_group_x(record, group) > 0) {
+        snprintf(line, sizeof(line), "本组 %u 环 · 内十 %u",
+                 (unsigned)archery_record_group_points(record, group),
+                 (unsigned)archery_record_group_x(record, group));
+    } else {
+        snprintf(line, sizeof(line), "本组 %u 环",
+                 (unsigned)archery_record_group_points(record, group));
+    }
     centered_label(scr, line, ARCHERY_FONT_BODY, C_TEXT, 230);
 
     add_hint(scr, "上/下 换组 · 确定 返回", 284);
@@ -731,7 +755,7 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
     add_title(scr, "设置");
 
     static const char *row_names[] = {"靶子类型", "屏幕方向", "屏幕亮度",
-                                      "息屏时间", "日期时间", "返回"};
+                                      "息屏时间", "记录内十", "日期时间"};
     char value[24];
     for (uint8_t row = 0; row < ARCHERY_SETTINGS_ROWS; row++) {
         const archery_rect_t rect = {20, (int16_t)(58 + row * 32), 200, 28};
@@ -739,32 +763,30 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
         lv_obj_t *card = make_card(scr, rect, selected, false);
         lv_obj_t *name = make_label(card, row_names[row], ARCHERY_FONT_BODY,
                                     selected ? C_GOLD : C_TEXT);
-        if (row < 5) {
-            lv_obj_align(name, LV_ALIGN_LEFT_MID, 12, 0);
-            if (row == 0) {
-                snprintf(value, sizeof(value), "%s", target_name(flow->settings.target));
-            } else if (row == 1) {
-                snprintf(value, sizeof(value), "%s",
-                         flow->settings.rotate ? "倒转" : "正常");
-            } else if (row == 2) {
-                snprintf(value, sizeof(value), "%u%%",
-                         (unsigned)flow->settings.brightness);
-            } else if (row == 3 && flow->settings.off_seconds == 0) {
-                snprintf(value, sizeof(value), "不息屏");
-            } else if (row == 3) {
-                snprintf(value, sizeof(value), "%u 秒",
-                         (unsigned)flow->settings.off_seconds);
-            } else if (!flow->clock_set) {
-                snprintf(value, sizeof(value), "未校准");
-            } else {
-                archery_clock_format_short(flow->clock_now, value, sizeof(value));
-            }
-            lv_obj_t *number = make_label(card, value, ARCHERY_FONT_BODY,
-                                          selected ? C_GOLD : C_TEXT);
-            lv_obj_align(number, LV_ALIGN_RIGHT_MID, -12, 0);
+        lv_obj_align(name, LV_ALIGN_LEFT_MID, 12, 0);
+        if (row == 0) {
+            snprintf(value, sizeof(value), "%s", target_name(flow->settings.target));
+        } else if (row == 1) {
+            snprintf(value, sizeof(value), "%s",
+                     flow->settings.rotate ? "倒转" : "正常");
+        } else if (row == 2) {
+            snprintf(value, sizeof(value), "%u%%",
+                     (unsigned)flow->settings.brightness);
+        } else if (row == 3 && flow->settings.off_seconds == 0) {
+            snprintf(value, sizeof(value), "不息屏");
+        } else if (row == 3) {
+            snprintf(value, sizeof(value), "%u 秒",
+                     (unsigned)flow->settings.off_seconds);
+        } else if (row == 4) {
+            snprintf(value, sizeof(value), "%s", flow->settings.record_x ? "开" : "关");
+        } else if (!flow->clock_set) {
+            snprintf(value, sizeof(value), "未校准");
         } else {
-            lv_obj_center(name);
+            archery_clock_format_short(flow->clock_now, value, sizeof(value));
         }
+        lv_obj_t *number = make_label(card, value, ARCHERY_FONT_BODY,
+                                      selected ? C_GOLD : C_TEXT);
+        lv_obj_align(number, LV_ALIGN_RIGHT_MID, -12, 0);
     }
     add_hint(scr, "上/下 调整 · 确定 下一项", 248);
     add_hint(scr, "长按确定 保存并返回", 274);

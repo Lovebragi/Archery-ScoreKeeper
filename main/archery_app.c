@@ -46,6 +46,7 @@ typedef enum {
     APP_MSG_WIFI,
     APP_MSG_VOICE_START,
     APP_MSG_VOICE_STOP,
+    APP_MSG_HISTORY_FILTER,
 } app_msg_type_t;
 
 typedef struct {
@@ -69,6 +70,11 @@ static volatile bool s_rotate_keys = (ARCHERY_SETTINGS_DEFAULT_ROTATE != 0);
 static bool s_wifi_dimmed;
 static esp_timer_handle_t s_ptt_timer;
 static volatile bool s_ptt_used;
+// 历史列表按住上/下自动连发；400 ms 后启动，之后每 60 ms 一步。
+static esp_timer_handle_t s_repeat_timer;
+static volatile bool s_repeat_active;
+static volatile bool s_repeat_used;
+static archery_key_t s_repeat_key;
 // 按键唤醒后，那颗键在整个启动期间还按着；在它松手前丢弃按键动作，
 // 避免把"唤醒键仍在按"误判成长按。
 static key_guard_t s_key_guard;
@@ -356,6 +362,23 @@ static archery_button_t physical_button(bsp_btn_t btn) {
     }
 }
 
+static void repeat_timer_cb(void *arg) {
+    (void)arg;
+    if (!s_repeat_active || s_flow.page != ARCHERY_PAGE_HISTORY) {
+        if (s_repeat_timer) (void)esp_timer_stop(s_repeat_timer);
+        s_repeat_active = false;
+        return;
+    }
+    s_repeat_used = true;
+    if (s_queue) {
+        const app_message_t step = {.type = APP_MSG_KEY, .key = s_repeat_key};
+        (void)xQueueSend(s_queue, &step, 0);
+    }
+    // 第一次触发时从 400 ms 延时切到 60 ms 周期。
+    (void)esp_timer_stop(s_repeat_timer);
+    (void)esp_timer_start_periodic(s_repeat_timer, 60000);
+}
+
 static void ptt_timer_cb(void *arg) {
     (void)arg;
     s_ptt_used = true;
@@ -381,16 +404,26 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t event, void *user) {
 
     // PTT：按下 200 ms 后开始录音（短按仍算单击），松手结束。
     if (event == BSP_BTN_PRESS) {
-        if (archery_flow_button_key(physical, s_rotate_keys) == ARCHERY_KEY_UP &&
-            s_flow.page == ARCHERY_PAGE_ENTRY && s_flow.settings.voice_enabled &&
-            s_ptt_timer) {
+        const archery_key_t pressed = archery_flow_button_key(physical, s_rotate_keys);
+        if (pressed == ARCHERY_KEY_UP && s_flow.page == ARCHERY_PAGE_ENTRY &&
+            s_flow.settings.voice_enabled && s_ptt_timer) {
             (void)esp_timer_stop(s_ptt_timer);
             (void)esp_timer_start_once(s_ptt_timer, 200000);
+        }
+        if ((pressed == ARCHERY_KEY_UP || pressed == ARCHERY_KEY_DOWN) &&
+            s_flow.page == ARCHERY_PAGE_HISTORY && s_repeat_timer) {
+            s_repeat_key = pressed;
+            s_repeat_active = true;
+            s_repeat_used = false;
+            (void)esp_timer_stop(s_repeat_timer);
+            (void)esp_timer_start_once(s_repeat_timer, 400000);
         }
         return;
     }
     if (event == BSP_BTN_RELEASE) {
         if (s_ptt_timer) (void)esp_timer_stop(s_ptt_timer);
+        if (s_repeat_timer) (void)esp_timer_stop(s_repeat_timer);
+        s_repeat_active = false;
         if (archery_voice_active()) {
             const app_message_t stop = {.type = APP_MSG_VOICE_STOP};
             (void)xQueueSend(s_queue, &stop, 0);
@@ -406,12 +439,22 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t event, void *user) {
             return;  // 上键长按已是 PTT，不再产生普通事件
         }
     } else if (event == BSP_BTN_CLICK || event == BSP_BTN_DOUBLE) {
+        if (s_repeat_used) {
+            s_repeat_used = false;  // 长按连发已经处理过，吞掉松手后的单击
+            return;
+        }
         if (s_ptt_used) {
             s_ptt_used = false;  // 这次按键已经用于语音，吞掉单击
             return;
         }
-        // 双击窗口内的快速连按会被驱动合并成 DOUBLE；本应用没有双击语义，
-        // 按一次单击处理，避免快速调整数值时"按键失灵"。
+        if (event == BSP_BTN_DOUBLE && s_flow.page == ARCHERY_PAGE_HISTORY &&
+            archery_flow_button_is_ok(physical, s_rotate_keys)) {
+            const app_message_t filter = {.type = APP_MSG_HISTORY_FILTER};
+            (void)xQueueSend(s_queue, &filter, 0);
+            return;
+        }
+        // 双击窗口内的快速连按会被驱动合并成 DOUBLE；其它页面按单击处理，
+        // 避免快速调整数值时"按键失灵"。
         key = archery_flow_button_key(physical, s_rotate_keys);
     } else {
         return;
@@ -608,6 +651,12 @@ static void worker_task(void *argument) {
                 }
             } else if (message.type == APP_MSG_VOICE_STOP) {
                 archery_voice_stop();
+            } else if (message.type == APP_MSG_HISTORY_FILTER) {
+                if (archery_flow_history_cycle_filter(&s_flow) ==
+                    ARCHERY_ACT_HISTORY_FILTER) {
+                    refresh_history_count();
+                    redraw();
+                }
             } else {
                 handle_wifi_event();
             }
@@ -711,6 +760,12 @@ void archery_app_start(void) {
     if (esp_timer_create(&ptt_args, &s_ptt_timer) != ESP_OK) {
         ESP_LOGW(TAG, "PTT 定时器创建失败，语音改用长按");
         s_ptt_timer = NULL;
+    }
+    const esp_timer_create_args_t repeat_args = {.callback = repeat_timer_cb,
+                                                 .name = "repeat"};
+    if (esp_timer_create(&repeat_args, &s_repeat_timer) != ESP_OK) {
+        ESP_LOGW(TAG, "历史连发定时器创建失败，改用逐行滚动");
+        s_repeat_timer = NULL;
     }
     if (xTaskCreate(worker_task, "archery", WORKER_STACK_BYTES, NULL, 5, &s_worker) != pdPASS) {
         ESP_LOGE(TAG, "应用任务创建失败，界面只读");

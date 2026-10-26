@@ -553,7 +553,14 @@ static archery_act_t handle_history(archery_flow_t *flow, archery_key_t key) {
     case ARCHERY_KEY_DOWN: {
         const int delta = key == ARCHERY_KEY_UP ? -1 : 1;
         const uint16_t max = history_max_cursor(flow);
-        move_cursor16(&flow->history_cursor, delta, 0, max);
+        // 首尾循环：到底再往下回到第一条，到顶再往上跳到最后一条。
+        if (delta > 0 && flow->history_cursor >= max) {
+            flow->history_cursor = 0;
+        } else if (delta < 0 && flow->history_cursor == 0) {
+            flow->history_cursor = max;
+        } else {
+            move_cursor16(&flow->history_cursor, delta, 0, max);
+        }
         break;
     }
     case ARCHERY_KEY_OK:
@@ -573,13 +580,19 @@ static archery_act_t handle_history(archery_flow_t *flow, archery_key_t key) {
         }
         break;
     case ARCHERY_KEY_OK_LONG:
-        // 长按确定循环切换筛选：全部 -> 今天 -> 最近 7 天 -> 全部。
-        flow->history_filter = (uint8_t)((flow->history_filter + 1u) %
-                                         ARCHERY_HISTORY_FILTER_COUNT);
-        flow->history_cursor = 0;
-        return ARCHERY_ACT_HISTORY_FILTER;
+        // 长按确定 = 直接回主页，和其他页面保持一致。
+        flow->page = ARCHERY_PAGE_HOME;
+        break;
     }
     return ARCHERY_ACT_NONE;
+}
+
+archery_act_t archery_flow_history_cycle_filter(archery_flow_t *flow) {
+    if (!flow || flow->page != ARCHERY_PAGE_HISTORY) return ARCHERY_ACT_NONE;
+    flow->history_filter = (uint8_t)((flow->history_filter + 1u) %
+                                     ARCHERY_HISTORY_FILTER_COUNT);
+    flow->history_cursor = 0;
+    return ARCHERY_ACT_HISTORY_FILTER;
 }
 
 static archery_act_t handle_detail(archery_flow_t *flow, archery_key_t key) {

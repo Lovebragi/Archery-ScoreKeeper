@@ -471,7 +471,7 @@ static void render_history(lv_obj_t *scr, const archery_flow_t *flow,
         lv_obj_t *label = make_label(card, "返回主页", ARCHERY_FONT_BODY,
                                      selected ? C_GOLD : C_TEXT);
         lv_obj_center(label);
-        add_hint(scr, "确定 返回 · 长按 切换筛选", 284);
+        add_hint(scr, "确定 返回 · 双击 切换筛选", 284);
         return;
     }
 
@@ -512,8 +512,8 @@ static void render_history(lv_obj_t *scr, const archery_flow_t *flow,
                                    selected ? C_GOLD : C_TEXT);
         lv_obj_align(sum, LV_ALIGN_RIGHT_MID, -8, 0);
     }
-    add_hint(scr, "上/下 选择 · 确定 查看", 262);
-    add_hint(scr, "长按确定 切换筛选", 284);
+    add_hint(scr, "上/下 选择 · 按住 快滚", 262);
+    add_hint(scr, "双击 筛选 · 长按 回主页", 284);
 }
 
 static void render_detail(lv_obj_t *scr, const archery_flow_t *flow,

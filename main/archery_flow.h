@@ -131,6 +131,9 @@ archery_act_t archery_flow_handle(archery_flow_t *flow, archery_key_t key);
 // 历史记录数量变化（写入新记录、清空或切换筛选后）由上层同步进来，重新钳制光标。
 void archery_flow_set_history_count(archery_flow_t *flow, uint16_t count);
 
+// 历史页双击确定：循环切换筛选并回到第一条。
+archery_act_t archery_flow_history_cycle_filter(archery_flow_t *flow);
+
 // 当前时间（秒）由上层同步，供手动对时页初始化和"今天/最近 7 天"筛选使用。
 void archery_flow_set_clock(archery_flow_t *flow, uint32_t now, bool time_set);
 

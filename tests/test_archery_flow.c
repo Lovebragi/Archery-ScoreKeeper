@@ -550,11 +550,15 @@ static void test_history_pages(void) {
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.page == ARCHERY_PAGE_HOME);
 
-    // 重新进入，3 条记录：行 0..2 是记录，3 清空，4 返回
+    // 重新进入，3 条记录：行 0..2 是记录，3 清空，4 返回；首尾循环
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.page == ARCHERY_PAGE_HISTORY);
     archery_flow_set_history_count(&flow, 3);
-    for (int i = 0; i < 9; i++) press(&flow, ARCHERY_KEY_DOWN);
+    press(&flow, ARCHERY_KEY_UP);  // 0 -> 最后一行
+    assert(flow.history_cursor == 4);
+    press(&flow, ARCHERY_KEY_DOWN);  // 最后一行 -> 0
+    assert(flow.history_cursor == 0);
+    press(&flow, ARCHERY_KEY_UP);
     assert(flow.history_cursor == 4);
     press(&flow, ARCHERY_KEY_UP);
     assert(flow.history_cursor == 3);
@@ -575,22 +579,26 @@ static void test_history_pages(void) {
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.page == ARCHERY_PAGE_HISTORY);
 
-    // 长按确定循环切换筛选：全部 -> 今天 -> 最近 7 天 -> 全部
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) ==
+    // 双击确定循环切换筛选：全部 -> 今天 -> 最近 7 天 -> 全部
+    assert(archery_flow_history_cycle_filter(&flow) ==
            ARCHERY_ACT_HISTORY_FILTER);
     assert(flow.history_filter == ARCHERY_HISTORY_FILTER_TODAY);
     assert(flow.history_cursor == 0);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) ==
+    assert(archery_flow_history_cycle_filter(&flow) ==
            ARCHERY_ACT_HISTORY_FILTER);
     assert(flow.history_filter == ARCHERY_HISTORY_FILTER_WEEK);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) ==
+    assert(archery_flow_history_cycle_filter(&flow) ==
            ARCHERY_ACT_HISTORY_FILTER);
     assert(flow.history_filter == ARCHERY_HISTORY_FILTER_ALL);
 
-    // 清空
-    press(&flow, ARCHERY_KEY_DOWN);
-    press(&flow, ARCHERY_KEY_DOWN);
-    press(&flow, ARCHERY_KEY_DOWN);
+    // 长按确定 = 直接回主页
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) == ARCHERY_ACT_NONE);
+    assert(flow.page == ARCHERY_PAGE_HOME);
+
+    // 再次进入历史，清空
+    press(&flow, ARCHERY_KEY_OK);
+    assert(flow.page == ARCHERY_PAGE_HISTORY);
+    for (int i = 0; i < 3; i++) press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.history_cursor == 3);
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.page == ARCHERY_PAGE_CLEAR_CONFIRM);
@@ -610,7 +618,6 @@ static void test_history_pages(void) {
     assert(flow.history_count == 1);
 
     // 返回行回主页
-    press(&flow, ARCHERY_KEY_DOWN);
     press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.history_cursor == 2);
     press(&flow, ARCHERY_KEY_OK);

@@ -8,6 +8,21 @@ Release history for the archery scorekeeper application. The repository-wide
 [changelog](../CHANGELOG.md) tracks the AI Passport project itself; this file
 follows the application's firmware versions.
 
+## 1.3.1 — 2026-10-27
+
+### Added
+
+- History supports hold-to-scroll: holding up/down for 400 ms starts auto-repeat
+  and releasing stops it; scrolling past the bottom wraps to the first record
+  and past the top wraps to the last one.
+
+### Changed
+
+- A long OK press on the history screen now returns home, consistent with the
+  other screens.
+- A double OK press cycles the history filter (all / today / last 7 days); a
+  short OK press still opens a record's detail.
+
 ## 1.3.0 — 2026-10-26
 
 ### Added

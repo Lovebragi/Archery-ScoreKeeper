@@ -464,9 +464,23 @@ static void test_settings_page(void) {
     assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.record_x == 0);
 
-    // 日期时间行：进入手动对时页并保存
+    // 语音输入：默认开，切换为关
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.settings_row == 5);
+    assert(flow.settings.voice_enabled == 1);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(flow.settings.voice_enabled == 0);
+
+    // 提示音量：默认 60%，调到 80%
+    press(&flow, ARCHERY_KEY_OK);
+    assert(flow.settings_row == 6);
+    assert(flow.settings.beep_volume == 3);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(flow.settings.beep_volume == 4);
+
+    // 日期时间行（最后一行）：进入手动对时页并保存
+    press(&flow, ARCHERY_KEY_OK);
+    assert(flow.settings_row == 7);
     archery_flow_set_clock(&flow, 0x2B3A4C5Du, true);  // 2026-10-25 14:32 附近
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.page == ARCHERY_PAGE_CLOCK);
@@ -483,27 +497,25 @@ static void test_settings_page(void) {
     press(&flow, ARCHERY_KEY_UP);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_CLOCK_SAVE);
     assert(flow.page == ARCHERY_PAGE_SETTINGS);
-    assert(flow.settings_row == ARCHERY_SETTINGS_ROWS);
+    assert(flow.settings_row == 7);
 
-    // 返回位置：确定保存并回主页
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_SAVE);
+    // 日期时间行只能用长按确定退出（确定会再次进入对时页）
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) == ARCHERY_ACT_SETTINGS_SAVE);
     assert(flow.page == ARCHERY_PAGE_HOME);
 
     // 再次进入：值保留；长按确定同样保存并返回
     press(&flow, ARCHERY_KEY_OK);  // 光标仍停在「设置」
     assert(flow.page == ARCHERY_PAGE_SETTINGS);
     assert(flow.settings.brightness == 40);
-    press(&flow, ARCHERY_KEY_OK);  // 方向行
-    press(&flow, ARCHERY_KEY_OK);  // 亮度行
-    press(&flow, ARCHERY_KEY_OK);  // 息屏行
-    press(&flow, ARCHERY_KEY_OK);  // 记录内十行
-    press(&flow, ARCHERY_KEY_OK);  // 日期时间行
-    assert(flow.settings_row == 5);
+    assert(flow.settings.voice_enabled == 0);
+    assert(flow.settings.beep_volume == 4);
+    for (int i = 0; i < 7; i++) press(&flow, ARCHERY_KEY_OK);
+    assert(flow.settings_row == 7);
     press(&flow, ARCHERY_KEY_OK);  // 进入对时页
     assert(flow.page == ARCHERY_PAGE_CLOCK);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) == ARCHERY_ACT_CLOCK_SAVE);
     assert(flow.page == ARCHERY_PAGE_SETTINGS);
-    assert(flow.settings_row == ARCHERY_SETTINGS_ROWS);
+    assert(flow.settings_row == 7);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) == ARCHERY_ACT_SETTINGS_SAVE);
     assert(flow.page == ARCHERY_PAGE_HOME);
 

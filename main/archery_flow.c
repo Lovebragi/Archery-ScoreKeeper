@@ -374,15 +374,15 @@ static archery_act_t handle_clock(archery_flow_t *flow, archery_key_t key) {
         if (flow->clock_row + 1u < ARCHERY_CLOCK_ROWS) {
             flow->clock_row++;
         } else {
-            // 分字段按确定 = 保存对时并回到设置页的"返回"位置。
+            // 分字段按确定 = 保存对时并回到设置页的"日期时间"行。
             flow->page = ARCHERY_PAGE_SETTINGS;
-            flow->settings_row = ARCHERY_SETTINGS_ROWS;
+            flow->settings_row = 7;
             return ARCHERY_ACT_CLOCK_SAVE;
         }
         break;
     case ARCHERY_KEY_OK_LONG:
         flow->page = ARCHERY_PAGE_SETTINGS;
-        flow->settings_row = ARCHERY_SETTINGS_ROWS;
+        flow->settings_row = 7;
         return ARCHERY_ACT_CLOCK_SAVE;
     }
     return ARCHERY_ACT_NONE;
@@ -392,7 +392,7 @@ static archery_act_t handle_settings(archery_flow_t *flow, archery_key_t key) {
     switch (key) {
     case ARCHERY_KEY_UP:
     case ARCHERY_KEY_DOWN:
-        if (flow->settings_row < 5 &&
+        if (flow->settings_row < ARCHERY_SETTINGS_ROWS &&
             archery_settings_adjust(&flow->settings, flow->settings_row,
                                     key == ARCHERY_KEY_UP ? 1 : -1)) {
             // 靶型在下一组开始时生效；方向/亮度立即生效；息屏时间立即被空闲计时采用。
@@ -400,8 +400,8 @@ static archery_act_t handle_settings(archery_flow_t *flow, archery_key_t key) {
         }
         break;
     case ARCHERY_KEY_OK:
-        if (flow->settings_row == 5) {
-            // 进入手动对时页：以当前时钟为初值。
+        if (flow->settings_row == 7) {
+            // 最后一行的"日期时间"：按确定进入手动对时页。
             archery_seconds_to_datetime(flow->clock_now, &flow->clock_fields);
             flow->clock_row = 0;
             flow->page = ARCHERY_PAGE_CLOCK;

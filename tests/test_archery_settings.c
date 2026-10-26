@@ -96,8 +96,24 @@ static void test_adjust(void) {
     assert(archery_settings_adjust(&settings, 4, -1));
     assert(settings.record_x == 1);
 
-    // 非法行（日期时间不是可调整项）
-    assert(!archery_settings_adjust(&settings, 5, 1));
+    // 语音输入：默认开，任一方向切换
+    assert(archery_settings_adjust(&settings, 5, 1));
+    assert(settings.voice_enabled == 0);
+    assert(archery_settings_adjust(&settings, 5, -1));
+    assert(settings.voice_enabled == 1);
+
+    // 提示音量：默认 60%（档位 3），可到 0（静音）和 5（100%）
+    assert(settings.beep_volume == 3);
+    assert(archery_settings_adjust(&settings, 6, 1));
+    assert(settings.beep_volume == 4);
+    assert(archery_settings_adjust(&settings, 6, -4));
+    assert(settings.beep_volume == 0);
+    assert(!archery_settings_adjust(&settings, 6, -1));
+    assert(archery_settings_adjust(&settings, 6, 1));
+    assert(settings.beep_volume == 1);
+
+    // 非法行（日期时间在最后一行，不是可调整项）
+    assert(!archery_settings_adjust(&settings, 7, 1));
     assert(!archery_settings_adjust(NULL, 0, 1));
 }
 
@@ -185,7 +201,7 @@ static void test_legacy_compatibility(void) {
     assert(decoded.record_x == 1);
 
     // v3（10 字节，无"记录内十"字段）沿用旧行为：记录 X。
-    uint8_t v3[ARCHERY_SETTINGS_ENCODED_BYTES];
+    uint8_t v3[ARCHERY_SETTINGS_ENCODED_BYTES_V4];
     v3[0] = 0x5A;
     v3[1] = 3;    // v3
     v3[2] = ARCHERY_TARGET_HALF_40;

@@ -127,6 +127,12 @@ static void test_erhua_and_homophones(void) {
     const uint8_t rings2[] = {10, 0};
     const uint8_t counts2[] = {3, 3};
     expect_ok("沙石沙拖把", 6, ARCHERY_TARGET_HALF_40, rings2, counts2, 2);
+
+    // 八→疤、七→漆
+    archery_speech_parse("全都是疤", ARCHERY_TARGET_HALF_40, 6, &result);
+    assert(result.ok && result.items[0].all && result.items[0].ring == 8);
+    archery_speech_parse("全都是漆", ARCHERY_TARGET_HALF_40, 6, &result);
+    assert(result.ok && result.items[0].all && result.items[0].ring == 7);
 }
 
 static void test_partial(void) {

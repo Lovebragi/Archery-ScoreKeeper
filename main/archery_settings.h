@@ -10,17 +10,20 @@
 #include <stdint.h>
 
 // 设置页行数：0 = 靶子类型，1 = 屏幕方向，2 = 屏幕亮度，3 = 息屏时间，
-// 4 = 记录内十，5 = 日期时间。
-#define ARCHERY_SETTINGS_ROWS 6u
+// 4 = 记录内十，5 = 语音输入开关，6 = 提示音量，7 = 日期时间。
+#define ARCHERY_SETTINGS_ROWS 8u
 
 #define ARCHERY_SETTINGS_DEFAULT_BRIGHTNESS 20u
 #define ARCHERY_SETTINGS_DEFAULT_OFF_SECONDS 15u
 #define ARCHERY_SETTINGS_DEFAULT_TARGET ((uint8_t)ARCHERY_TARGET_HALF_40)
 // 默认画面倒转(整机屏幕倒装);与 bsp_pins.h 的 BSP_LCD_ROTATE_180 一致。
 #define ARCHERY_SETTINGS_DEFAULT_ROTATE 1u
-// v4：magic + 版本 + 靶型 + 方向 + 亮度 + 息屏(2B) + 记录内十 + CRC。
-// 解码兼容 v1（无靶型）、v2（无方向）与 v3（无记录内十）格式。
-#define ARCHERY_SETTINGS_ENCODED_BYTES 10u
+#define ARCHERY_SETTINGS_DEFAULT_VOICE 1u
+#define ARCHERY_SETTINGS_DEFAULT_BEEP_VOLUME 3u  // 0/20/40/60/80/100 的第 3 档 = 60%
+// v5：magic + 版本 + 靶型 + 方向 + 亮度 + 息屏(2B) + 记录内十 + 语音开关 + 提示音量 + CRC。
+// 解码兼容 v1（无靶型）、v2（无方向）、v3（无记录内十）与 v4（无语音项）格式。
+#define ARCHERY_SETTINGS_ENCODED_BYTES 12u
+#define ARCHERY_SETTINGS_ENCODED_BYTES_V4 10u
 #define ARCHERY_SETTINGS_ENCODED_BYTES_V2 9u
 #define ARCHERY_SETTINGS_ENCODED_BYTES_V1 8u
 
@@ -30,6 +33,8 @@ typedef struct {
     uint8_t brightness;    // 20/40/60/80/100 (%)
     uint16_t off_seconds;  // 0 = 不息屏；15/30/60/120
     uint8_t record_x;      // 1 = 录入页保留 X（内十）行（默认），0 = 隐藏
+    uint8_t voice_enabled; // 1 = 启用语音报靶（默认），0 = 只用按键
+    uint8_t beep_volume;   // 提示音音量档位，对应 0/20/40/60/80/100（0 = 静音）
 } archery_settings_t;
 
 void archery_settings_defaults(archery_settings_t *settings);
@@ -44,7 +49,7 @@ uint8_t archery_settings_off_count(void);
 uint16_t archery_settings_off_at(uint8_t index);
 
 // 调整某一项：row 0 = 靶型，row 1 = 屏幕方向，row 2 = 亮度，row 3 = 息屏时间，
-// row 4 = 记录内十。在可选值表上钳制，不回绕；返回值是否真的改了。
+// row 4 = 记录内十，row 6 = 语音输入，row 7 = 提示音量。在可选值表上钳制，不回绕；返回值是否真的改了。
 bool archery_settings_adjust(archery_settings_t *settings, uint8_t row, int delta);
 
 // 编码/解码（magic + 版本 + 字段 + CRC16），用于 NVS 中的一条 blob。

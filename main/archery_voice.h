@@ -49,6 +49,12 @@ bool archery_voice_has_credentials(void);
 // 进入录入页时预热 WSS 连接，按下后能立刻开始录音。
 void archery_voice_prewarm(void);
 
+// 提示音音量（0/20/40/60/80/100），由设置页驱动。
+void archery_voice_set_beep_volume(uint8_t percent);
+
+// 用当前音量响一声，供设置页试听；0 时为静音。
+void archery_voice_preview_beep(void);
+
 // 识别完成的结果（消费一次）。
 bool archery_voice_take_result(archery_voice_result_t *out);
 

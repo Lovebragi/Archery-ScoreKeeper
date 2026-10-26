@@ -18,6 +18,10 @@ follows the application's firmware versions.
   scoring all run on the device, with no PC or LAN proxy.
 - The provisioning page gained a "Doubao credentials" section: enter the APPID
   and Access Token; both are stored in NVS and the token is never echoed back.
+- Settings gained a "Voice input" switch: when off, the entry screen returns to
+  keypad-only operation and never starts a recording.
+- Settings gained six beep levels (0% / 20% / 40% / 60% / 80% / 100%); 0% is
+  mute, and changing the level plays one preview beep at the new volume.
 - Partial ends (the screen says how many arrows remain), whole-end phrases such
   as "all nines" / "the rest are eights", colloquial forms (sa, lia, erhua) and
   common homophones are supported.

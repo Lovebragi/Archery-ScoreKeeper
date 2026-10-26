@@ -137,7 +137,8 @@ static void redraw(void) {
     archery_flow_set_clock(&s_flow, clock_now(), s_clock_set);
     sync_wifi_flow();
     archery_ui_set_wifi_view(&s_wifi_view);
-    archery_ui_set_voice_status(archery_voice_status());
+    archery_ui_set_voice_status(s_flow.settings.voice_enabled ? archery_voice_status()
+                                                              : "");
     if (!bsp_lvgl_lock(500)) {
         ESP_LOGW(TAG, "获取 LVGL 锁超时，跳过本次重绘");
         return;
@@ -174,6 +175,7 @@ static void apply_settings(const archery_settings_t *settings) {
     // 画面方向与亮度立即生效；息屏时间由 worker 的空闲判断直接读取 flow 里的副本。
     // 改 MADCTL 时先拿 LVGL 锁，避免和正在进行的刷屏并发。
     s_rotate_keys = settings->rotate != 0;
+    archery_voice_set_beep_volume((uint8_t)(settings->beep_volume * 20u));
     if (bsp_lvgl_lock(200)) {
         bsp_display_backlight(settings->brightness);
         (void)bsp_display_set_flip_180(settings->rotate != 0);
@@ -275,6 +277,7 @@ static void handle_key(archery_key_t key) {
         break;
     case ARCHERY_ACT_SETTINGS_CHANGED:
         apply_settings(&s_flow.settings);
+        if (s_flow.settings_row == 6) archery_voice_preview_beep();
         break;
     case ARCHERY_ACT_SETTINGS_SAVE:
         apply_settings(&s_flow.settings);
@@ -379,7 +382,8 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t event, void *user) {
     // PTT：按下 200 ms 后开始录音（短按仍算单击），松手结束。
     if (event == BSP_BTN_PRESS) {
         if (archery_flow_button_key(physical, s_rotate_keys) == ARCHERY_KEY_UP &&
-            s_flow.page == ARCHERY_PAGE_ENTRY && s_ptt_timer) {
+            s_flow.page == ARCHERY_PAGE_ENTRY && s_flow.settings.voice_enabled &&
+            s_ptt_timer) {
             (void)esp_timer_stop(s_ptt_timer);
             (void)esp_timer_start_once(s_ptt_timer, 200000);
         }
@@ -590,7 +594,8 @@ static void worker_task(void *argument) {
                     handle_key(message.key);
                 }
             } else if (message.type == APP_MSG_VOICE_START) {
-                if (s_flow.page == ARCHERY_PAGE_ENTRY && (archery_voice_enabled() || archery_voice_has_credentials()) &&
+                if (s_flow.page == ARCHERY_PAGE_ENTRY && s_flow.settings.voice_enabled &&
+                    (archery_voice_enabled() || archery_voice_has_credentials()) &&
                     !archery_voice_active()) {
                     const bool faces = archery_flow_target_has_faces(s_flow.session.target);
                     const uint8_t face = faces ? s_flow.entry_face : 0;

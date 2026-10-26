@@ -758,10 +758,11 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
     add_title(scr, "设置");
 
     static const char *row_names[] = {"靶子类型", "屏幕方向", "屏幕亮度",
-                                      "息屏时间", "记录内十", "日期时间"};
+                                      "息屏时间", "记录内十", "语音输入",
+                                      "提示音量", "日期时间"};
     char value[24];
     for (uint8_t row = 0; row < ARCHERY_SETTINGS_ROWS; row++) {
-        const archery_rect_t rect = {20, (int16_t)(58 + row * 32), 200, 28};
+        const archery_rect_t rect = {20, (int16_t)(46 + row * 26), 200, 24};
         const bool selected = flow->settings_row == row;
         lv_obj_t *card = make_card(scr, rect, selected, false);
         lv_obj_t *name = make_label(card, row_names[row], ARCHERY_FONT_BODY,
@@ -782,6 +783,12 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
                      (unsigned)flow->settings.off_seconds);
         } else if (row == 4) {
             snprintf(value, sizeof(value), "%s", flow->settings.record_x ? "开" : "关");
+        } else if (row == 5) {
+            snprintf(value, sizeof(value), "%s",
+                     flow->settings.voice_enabled ? "开" : "关");
+        } else if (row == 6) {
+            snprintf(value, sizeof(value), "%u%%",
+                     (unsigned)(flow->settings.beep_volume * 20u));
         } else if (!flow->clock_set) {
             snprintf(value, sizeof(value), "未校准");
         } else {
@@ -791,8 +798,8 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
                                       selected ? C_GOLD : C_TEXT);
         lv_obj_align(number, LV_ALIGN_RIGHT_MID, -12, 0);
     }
-    add_hint(scr, "上/下 调整 · 确定 下一项", 248);
-    add_hint(scr, "长按确定 保存并返回", 274);
+    add_hint(scr, "上/下 调整 · 确定 下一项", 258);
+    add_hint(scr, "长按确定 保存并返回", 284);
 }
 
 // 手动对时：年 / 月 / 日 / 时 / 分。设备没有 RTC 电池，断电后从上次时间继续。

@@ -62,7 +62,7 @@ immediately.
 | --- | --- | --- | --- | --- |
 | Home | Target rings, four entries, clock and network status, battery | Select entry | Enter | – |
 | Setup | Group count, arrows per group, per-face arrows for the three-spot target, start | Adjust the focused value | Next field / start | Previous field (back to home on the first row) |
-| Settings | Target type, screen orientation, screen brightness, screen-off time, record inner ten, date/time | Adjust the focused value | Next field / open date-time / save and back | Save and back |
+| Settings | Target type, screen orientation, screen brightness, screen-off time, record inner ten, voice input, beep volume, date/time | Adjust the focused value | Next field / open date-time / save and back | Save and back |
 | Entry | Two-column ring tally for the current group and a commit row (one face at a time for the three-spot target) | Change the highlighted ring's arrow count | Next ring / commit row | Previous ring (abandon confirmation on the first row) |
 | Summary | Finished group, running total, group dots | – | Next group / summary | Abandon confirmation |
 | Finish | Session total, average, X/M, save state | – | Back to home | Back to home |
@@ -216,7 +216,14 @@ The home screen has a third entry, Settings, with these controls:
 | Screen brightness | 20 / 40 / 60 / 80 / 100% | 20% |
 | Screen-off time | 0 / 15 / 30 / 60 / 120 s (`0` keeps the screen on) | 15 s |
 | Record inner ten | On / Off | On |
+| Voice input | On / Off | On |
+| Beep volume | 0 / 20 / 40 / 60 / 80 / 100% | 60% |
 | Date/time | Local wall clock, set by hand | Build time until calibrated |
+
+The rows are listed top to bottom; date/time is the last row and OK opens the
+manual clock page. With voice input off, the entry screen keeps only the keypad
+hint and holding up never records. Beep volume 0% is mute; each adjustment in
+Settings plays one preview beep at the new level.
 
 After the configured idle time the application turns the backlight off, disables
 the display output, hands the shared key pin back to a digital input and enters

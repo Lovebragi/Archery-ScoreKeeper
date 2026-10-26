@@ -41,6 +41,8 @@ static uint8_t s_target = 0;
 static uint8_t s_arrows = 6;
 static char s_appid[32];
 static char s_token[96];
+static uint8_t s_beep_volume = 60;
+static bool s_audio_ready;
 static voice_endpoint_t s_endpoint;
 static SemaphoreHandle_t s_start_sem;
 static TaskHandle_t s_task;
@@ -273,7 +275,8 @@ static void parse_result(const char *json) {
 }
 
 static void play_tone(uint16_t hz, uint16_t ms, int repeat, uint16_t gap_ms) {
-    bsp_audio_set_volume(70);
+    if (s_beep_volume == 0) return;  // 静音档：不碰 codec
+    bsp_audio_set_volume(s_beep_volume);
     int16_t buffer[320];
     const int samples = (int)(16000 / hz / 2);
     for (int n = 0; n < repeat; n++) {
@@ -376,6 +379,7 @@ static void run_session(void) {
         s_active = false;
         return;
     }
+    s_audio_ready = true;
 
     if (archery_voice_has_credentials()) {
         run_ws_session();
@@ -482,6 +486,21 @@ static void prewarm_task(void *arg) {
         }
     }
     vTaskDelete(NULL);
+}
+
+void archery_voice_set_beep_volume(uint8_t percent) {
+    s_beep_volume = percent > 100 ? 100 : percent;
+}
+
+void archery_voice_preview_beep(void) {
+    if (s_active || s_beep_volume == 0) return;
+    if (!s_audio_ready) {
+        if (bsp_audio_init() != ESP_OK || bsp_audio_set_format(16000, 16, 1) != ESP_OK) {
+            return;
+        }
+        s_audio_ready = true;
+    }
+    play_tone(1000, 80, 1, 0);
 }
 
 void archery_voice_prewarm(void) {

@@ -8,6 +8,29 @@ Release history for the archery scorekeeper application. The repository-wide
 [changelog](../CHANGELOG.md) tracks the AI Passport project itself; this file
 follows the application's firmware versions.
 
+## 1.3.2 — 2026-10-27
+
+### Added
+
+- Wi-Fi memory: up to 10 successful networks are kept (same SSID updates its
+  password, the least recently used one is evicted). Saved networks connect
+  directly from the device list or the phone setup page without retyping the
+  password.
+- Settings gained a "Save Wi-Fi passwords" switch, on by default. Turning it off
+  clears the saved list and stops auto-reconnect at boot. Passwords are stored in
+  readable form in device NVS and can be read by anyone with the device; turn it
+  off if that matters to you.
+
+### Changed
+
+- Settings now use a six-row scrolling window with a "1-6 / 9" range label, so
+  rows no longer overlap the bottom hints.
+- The home menu wraps: down on the last entry returns to the first, up on the
+  first jumps to the last.
+- The provisioning page's Connect button now sits directly below the Wi-Fi
+  password field.
+- Connecting to a saved network now shows "connecting → connected + IP".
+
 ## 1.3.1 — 2026-10-27
 
 ### Added

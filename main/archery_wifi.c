@@ -6,6 +6,7 @@
 // - 口令存 NVS（命名空间 archery，键 w_ssid / w_pass），开机自动重连；
 // - 时间按 UTC+8 换算成本地墙上时间（2000 起算的秒），交给应用写 NVS。
 #include "archery_wifi.h"
+#include "archery_wifi_store.h"
 
 #include "archery_voice.h"
 
@@ -70,6 +71,22 @@ static bool load_credentials(char *ssid, size_t ssid_size, char *pass, size_t pa
                     nvs_get_str(handle, NVS_PASS, pass, &pass_len) == ESP_OK;
     nvs_close(handle);
     return ok && ssid[0] != '\0';
+}
+
+static bool s_save_enabled = true;
+
+void archery_wifi_set_save_enabled(bool enabled) { s_save_enabled = enabled; }
+bool archery_wifi_save_enabled(void) { return s_save_enabled; }
+
+void archery_wifi_forget_credentials(void) {
+    nvs_handle_t handle;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &handle) == ESP_OK) {
+        (void)nvs_erase_key(handle, NVS_SSID);
+        (void)nvs_erase_key(handle, NVS_PASS);
+        (void)nvs_commit(handle);
+        nvs_close(handle);
+    }
+    archery_wifi_store_clear();
 }
 
 static void save_credentials(const char *ssid, const char *pass) {
@@ -168,7 +185,10 @@ esp_err_t archery_wifi_scan(void) {
 // ---------------------------------------------------------------- 连接
 esp_err_t archery_wifi_connect(const char *ssid, const char *password) {
     if (!s_inited || !ssid || !ssid[0]) return ESP_ERR_INVALID_ARG;
-    save_credentials(ssid, password);
+    if (s_save_enabled) {
+        save_credentials(ssid, password);
+        archery_wifi_store_remember(ssid, password);
+    }
 
     if (s_provisioning) {
         archery_wifi_stop_provisioning();
@@ -288,6 +308,7 @@ static const char *PROV_HTML =
     " spellcheck=false autocomplete=off>"
     "<input id=pass type=password placeholder='Wi-Fi 密码' autocapitalize=none"
     " autocorrect=off spellcheck=false autocomplete=off>"
+    "<button onclick=go()>连接</button>"
     "<div class=muted style='margin-top:18px'>语音服务地址（局域网代理，可留空）</div>"
     "<input id=voice placeholder='http://192.168.1.10:8765/asr' autocapitalize=none"
     " autocorrect=off spellcheck=false autocomplete=off>"
@@ -298,7 +319,7 @@ static const char *PROV_HTML =
     "<input id=token type=password placeholder='Access Token' autocapitalize=none"
     " autocorrect=off spellcheck=false autocomplete=off>"
     "<button onclick=saveCreds()>保存直连凭据</button>"
-    "<button onclick=go()>连接</button><div id=msg class=muted style='margin-top:12px'></div><script>"
+    "<div id=msg class=muted style='margin-top:12px'></div><script>"
     "let ssid=document.getElementById('ssid'),pass=document.getElementById('pass'),"
     "voice=document.getElementById('voice'),appid=document.getElementById('appid'),"
     "token=document.getElementById('token'),msg=document.getElementById('msg');"
@@ -422,6 +443,14 @@ static esp_err_t http_connect(httpd_req_t *req) {
         url_decode(pass);
     }
     if (ssid[0] == '\0') return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "no ssid");
+
+    // 密码留空时优先用已保存的密码，省去重复输入。
+    if (pass[0] == '\0' && s_save_enabled) {
+        char saved[64];
+        if (archery_wifi_store_lookup(ssid, saved, sizeof(saved))) {
+            strncpy(pass, saved, sizeof(pass) - 1);
+        }
+    }
 
     httpd_resp_set_type(req, "text/plain; charset=utf-8");
     httpd_resp_sendstr(req, "已收到，正在连接…");

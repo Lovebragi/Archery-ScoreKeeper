@@ -10,8 +10,8 @@
 #include <stdint.h>
 
 // 设置页行数：0 = 靶子类型，1 = 屏幕方向，2 = 屏幕亮度，3 = 息屏时间，
-// 4 = 记录内十，5 = 语音输入开关，6 = 提示音量，7 = 日期时间。
-#define ARCHERY_SETTINGS_ROWS 8u
+// 4 = 记录内十，5 = 语音输入开关，6 = 提示音量，7 = 保存 Wi-Fi 密码，8 = 日期时间。
+#define ARCHERY_SETTINGS_ROWS 9u
 
 #define ARCHERY_SETTINGS_DEFAULT_BRIGHTNESS 20u
 #define ARCHERY_SETTINGS_DEFAULT_OFF_SECONDS 15u
@@ -20,9 +20,11 @@
 #define ARCHERY_SETTINGS_DEFAULT_ROTATE 1u
 #define ARCHERY_SETTINGS_DEFAULT_VOICE 1u
 #define ARCHERY_SETTINGS_DEFAULT_BEEP_VOLUME 3u  // 0/20/40/60/80/100 的第 3 档 = 60%
-// v5：magic + 版本 + 靶型 + 方向 + 亮度 + 息屏(2B) + 记录内十 + 语音开关 + 提示音量 + CRC。
-// 解码兼容 v1（无靶型）、v2（无方向）、v3（无记录内十）与 v4（无语音项）格式。
-#define ARCHERY_SETTINGS_ENCODED_BYTES 12u
+#define ARCHERY_SETTINGS_DEFAULT_WIFI_SAVE 1u
+// v6：magic + 版本 + 靶型 + 方向 + 亮度 + 息屏(2B) + 记录内十 + 语音 + 音量 + 保存Wi-Fi + CRC。
+// 解码兼容 v1（无靶型）、v2（无方向）、v3（无记录内十）、v4（无语音项）与 v5（无保存Wi-Fi）格式。
+#define ARCHERY_SETTINGS_ENCODED_BYTES 13u
+#define ARCHERY_SETTINGS_ENCODED_BYTES_V5 12u
 #define ARCHERY_SETTINGS_ENCODED_BYTES_V4 10u
 #define ARCHERY_SETTINGS_ENCODED_BYTES_V2 9u
 #define ARCHERY_SETTINGS_ENCODED_BYTES_V1 8u
@@ -35,6 +37,7 @@ typedef struct {
     uint8_t record_x;      // 1 = 录入页保留 X（内十）行（默认），0 = 隐藏
     uint8_t voice_enabled; // 1 = 启用语音报靶（默认），0 = 只用按键
     uint8_t beep_volume;   // 提示音音量档位，对应 0/20/40/60/80/100（0 = 静音）
+    uint8_t wifi_save;     // 1 = 保存 Wi-Fi 密码（默认），0 = 不保存
 } archery_settings_t;
 
 void archery_settings_defaults(archery_settings_t *settings);

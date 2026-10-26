@@ -218,12 +218,29 @@ The home screen has a third entry, Settings, with these controls:
 | Record inner ten | On / Off | On |
 | Voice input | On / Off | On |
 | Beep volume | 0 / 20 / 40 / 60 / 80 / 100% | 60% |
+| Save Wi-Fi passwords | On / Off | On |
 | Date/time | Local wall clock, set by hand | Build time until calibrated |
 
-The rows are listed top to bottom; date/time is the last row and OK opens the
-manual clock page. With voice input off, the entry screen keeps only the keypad
-hint and holding up never records. Beep volume 0% is mute; each adjustment in
+The rows are listed top to bottom; the settings page shows six rows at a time and
+scrolls when the cursor leaves the window, with the current range shown at the
+top (for example `1-6 / 9`). Date/time is the last row and OK opens the manual
+clock page. With voice input off, the entry screen keeps only the keypad hint
+and holding up never records. Beep volume 0% is mute; each adjustment in
 Settings plays one preview beep at the new level.
+
+### Wi-Fi memory and security
+
+With "Save Wi-Fi passwords" on, the device keeps up to 10 recent networks (the
+same SSID updates its password, the least recently used one is evicted). Pick a
+saved network on the device list or the phone setup page to connect without
+retyping the password. Turning the switch off clears the saved list and stops
+auto-reconnect at boot.
+
+**Security note:** passwords are stored in readable form in device NVS with no
+hardware-backed encryption. Anyone with the device can read the whole flash
+through the programming port and see them. This suits a personal device at home;
+if the device is lent out, resold or used in public, turn the switch off and type
+the password each time.
 
 After the configured idle time the application turns the backlight off, disables
 the display output, hands the shared key pin back to a digital input and enters

@@ -629,6 +629,16 @@ static void render_wifi(lv_obj_t *scr, const archery_flow_t *flow) {
         return;
     }
 
+    if (view->state == ARCHERY_WIFI_CONNECTING) {
+        centered_label(scr, "正在连接", ARCHERY_FONT_TITLE, C_TEXT, 96);
+        centered_label(scr, view->ssid[view->selected][0] ? view->ssid[view->selected]
+                                                         : "选中的网络",
+                       ARCHERY_FONT_BODY, C_GOLD, 136);
+        centered_label(scr, "请稍候…", ARCHERY_FONT_BODY, C_MUTED, 170);
+        add_hint(scr, "长按确定 取消", 284);
+        return;
+    }
+
     if (flow->wifi_mode == 1) {
         if (view->state == ARCHERY_WIFI_SCANNING) {
             centered_label(scr, "正在扫描附近 Wi-Fi…", ARCHERY_FONT_BODY, C_MUTED, 40);
@@ -666,16 +676,6 @@ static void render_wifi(lv_obj_t *scr, const archery_flow_t *flow) {
         }
         add_hint(scr, "上/下 选择 · 确定 连接", 262);
         add_hint(scr, "长按确定 返回", 288);
-        return;
-    }
-
-    if (view->state == ARCHERY_WIFI_CONNECTING) {
-        centered_label(scr, "正在连接", ARCHERY_FONT_TITLE, C_TEXT, 96);
-        centered_label(scr, view->ssid[view->selected][0] ? view->ssid[view->selected]
-                                                         : "选中的网络",
-                       ARCHERY_FONT_BODY, C_GOLD, 136);
-        centered_label(scr, "请稍候…", ARCHERY_FONT_BODY, C_MUTED, 170);
-        add_hint(scr, "长按确定 取消", 284);
         return;
     }
 
@@ -759,10 +759,18 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
 
     static const char *row_names[] = {"靶子类型", "屏幕方向", "屏幕亮度",
                                       "息屏时间", "记录内十", "语音输入",
-                                      "提示音量", "日期时间"};
+                                      "提示音量", "保存Wi-Fi密码", "日期时间"};
     char value[24];
-    for (uint8_t row = 0; row < ARCHERY_SETTINGS_ROWS; row++) {
-        const archery_rect_t rect = {20, (int16_t)(46 + row * 26), 200, 24};
+    const uint8_t visible = 6;
+    uint8_t offset = flow->settings_row >= visible ? (uint8_t)(flow->settings_row - visible + 1u) : 0u;
+    if (offset > ARCHERY_SETTINGS_ROWS - visible) offset = ARCHERY_SETTINGS_ROWS - visible;
+    char page[16];
+    snprintf(page, sizeof(page), "%u-%u / %u", (unsigned)(offset + 1u),
+             (unsigned)(offset + visible), (unsigned)ARCHERY_SETTINGS_ROWS);
+    centered_label(scr, page, ARCHERY_FONT_BODY, C_MUTED, 34);
+    for (uint8_t i = 0; i < visible; i++) {
+        const uint8_t row = (uint8_t)(offset + i);
+        const archery_rect_t rect = {20, (int16_t)(54 + i * 32), 200, 28};
         const bool selected = flow->settings_row == row;
         lv_obj_t *card = make_card(scr, rect, selected, false);
         lv_obj_t *name = make_label(card, row_names[row], ARCHERY_FONT_BODY,
@@ -789,6 +797,9 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
         } else if (row == 6) {
             snprintf(value, sizeof(value), "%u%%",
                      (unsigned)(flow->settings.beep_volume * 20u));
+        } else if (row == 7) {
+            snprintf(value, sizeof(value), "%s",
+                     flow->settings.wifi_save ? "开" : "关");
         } else if (!flow->clock_set) {
             snprintf(value, sizeof(value), "未校准");
         } else {
@@ -798,8 +809,8 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
                                       selected ? C_GOLD : C_TEXT);
         lv_obj_align(number, LV_ALIGN_RIGHT_MID, -12, 0);
     }
-    add_hint(scr, "上/下 调整 · 确定 下一项", 258);
-    add_hint(scr, "长按确定 保存并返回", 284);
+    add_hint(scr, "上/下 调整 · 确定 下一项", 262);
+    add_hint(scr, "长按确定 保存并返回", 288);
 }
 
 // 手动对时：年 / 月 / 日 / 时 / 分。设备没有 RTC 电池，断电后从上次时间继续。

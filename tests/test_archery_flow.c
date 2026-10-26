@@ -11,7 +11,7 @@ static void press(archery_flow_t *flow, archery_key_t key) {
 
 static void start_session(archery_flow_t *flow, int groups, int arrows) {
     // 主页 -> 开始训练 -> 设置页
-    press(flow, ARCHERY_KEY_UP);
+    flow->home_select = 0;
     press(flow, ARCHERY_KEY_OK);
     assert(flow->page == ARCHERY_PAGE_SETUP);
     for (int i = 0; i < 40; i++) press(flow, ARCHERY_KEY_DOWN);
@@ -50,9 +50,13 @@ static void test_home_and_setup(void) {
     press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.home_select == 3);  // 主页四项：开始/历史/设置/联网
     press(&flow, ARCHERY_KEY_DOWN);
-    assert(flow.home_select == 3);  // 到底钳制
+    assert(flow.home_select == 0);  // 到底回第一条
     press(&flow, ARCHERY_KEY_UP);
+    assert(flow.home_select == 3);  // 顶部按上跳到最后一条
     press(&flow, ARCHERY_KEY_UP);
+    assert(flow.home_select == 2);
+    press(&flow, ARCHERY_KEY_UP);
+    assert(flow.home_select == 1);
     press(&flow, ARCHERY_KEY_UP);
     assert(flow.home_select == 0);
 
@@ -326,7 +330,7 @@ static void test_triple_target_setup_and_entry(void) {
     archery_flow_set_settings(&flow, &settings);
 
     // 主页 -> 新训练
-    press(&flow, ARCHERY_KEY_UP);
+    flow.home_select = 0;
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.page == ARCHERY_PAGE_SETUP);
     assert(flow.setup_row == 0);
@@ -478,9 +482,14 @@ static void test_settings_page(void) {
     assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.beep_volume == 4);
 
-    // 日期时间行（最后一行）：进入手动对时页并保存
+    // 保存 Wi-Fi 密码行，再到最后的日期时间行
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.settings_row == 7);
+    assert(flow.settings.wifi_save == 1);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(flow.settings.wifi_save == 0);
+    press(&flow, ARCHERY_KEY_OK);
+    assert(flow.settings_row == 8);
     archery_flow_set_clock(&flow, 0x2B3A4C5Du, true);  // 2026-10-25 14:32 附近
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.page == ARCHERY_PAGE_CLOCK);
@@ -497,7 +506,7 @@ static void test_settings_page(void) {
     press(&flow, ARCHERY_KEY_UP);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_CLOCK_SAVE);
     assert(flow.page == ARCHERY_PAGE_SETTINGS);
-    assert(flow.settings_row == 7);
+    assert(flow.settings_row == 8);
 
     // 日期时间行只能用长按确定退出（确定会再次进入对时页）
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) == ARCHERY_ACT_SETTINGS_SAVE);
@@ -509,13 +518,13 @@ static void test_settings_page(void) {
     assert(flow.settings.brightness == 40);
     assert(flow.settings.voice_enabled == 0);
     assert(flow.settings.beep_volume == 4);
-    for (int i = 0; i < 7; i++) press(&flow, ARCHERY_KEY_OK);
-    assert(flow.settings_row == 7);
+    for (int i = 0; i < 8; i++) press(&flow, ARCHERY_KEY_OK);
+    assert(flow.settings_row == 8);
     press(&flow, ARCHERY_KEY_OK);  // 进入对时页
     assert(flow.page == ARCHERY_PAGE_CLOCK);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) == ARCHERY_ACT_CLOCK_SAVE);
     assert(flow.page == ARCHERY_PAGE_SETTINGS);
-    assert(flow.settings_row == 7);
+    assert(flow.settings_row == 8);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) == ARCHERY_ACT_SETTINGS_SAVE);
     assert(flow.page == ARCHERY_PAGE_HOME);
 

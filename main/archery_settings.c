@@ -4,11 +4,13 @@
 #include <string.h>
 
 #define SETTINGS_MAGIC 0x5Au
-#define SETTINGS_VERSION 5u
+#define SETTINGS_VERSION 6u
+#define SETTINGS_VERSION_V5 5u
 #define SETTINGS_VERSION_V4 4u
 #define SETTINGS_VERSION_V3 3u
 #define SETTINGS_VERSION_V2 2u
 #define SETTINGS_VERSION_V1 1u
+#define SETTINGS_CRC_BYTES_V6 11u
 #define SETTINGS_CRC_BYTES_V5 10u
 #define SETTINGS_CRC_BYTES_V4 8u
 #define SETTINGS_CRC_BYTES_V2 7u
@@ -47,6 +49,7 @@ void archery_settings_defaults(archery_settings_t *settings) {
     settings->record_x = 1u;
     settings->voice_enabled = ARCHERY_SETTINGS_DEFAULT_VOICE;
     settings->beep_volume = ARCHERY_SETTINGS_DEFAULT_BEEP_VOLUME;
+    settings->wifi_save = ARCHERY_SETTINGS_DEFAULT_WIFI_SAVE;
 }
 
 uint8_t archery_settings_target_count(void) { return TARGET_COUNT; }
@@ -91,7 +94,7 @@ bool archery_settings_valid(const archery_settings_t *settings) {
            brightness_index(settings->brightness) >= 0 &&
            off_index(settings->off_seconds) >= 0 &&
            settings->record_x <= 1u && settings->voice_enabled <= 1u &&
-           settings->beep_volume < 6u;
+           settings->beep_volume < 6u && settings->wifi_save <= 1u;
 }
 
 bool archery_settings_adjust(archery_settings_t *settings, uint8_t row, int delta) {
@@ -146,6 +149,12 @@ bool archery_settings_adjust(archery_settings_t *settings, uint8_t row, int delt
         settings->beep_volume = (uint8_t)next;
         return true;
     }
+    if (row == 7) {
+        const uint8_t next = settings->wifi_save ? 0u : 1u;
+        if (next == settings->wifi_save) return false;
+        settings->wifi_save = next;
+        return true;
+    }
     return false;
 }
 
@@ -163,9 +172,10 @@ size_t archery_settings_encode(const archery_settings_t *settings,
     buffer[7] = settings->record_x;  // v4：是否在录入页记录内十
     buffer[8] = settings->voice_enabled;
     buffer[9] = settings->beep_volume;
-    const uint16_t crc = crc16_ccitt(buffer, SETTINGS_CRC_BYTES_V5);
-    buffer[10] = (uint8_t)(crc & 0xFFu);
-    buffer[11] = (uint8_t)(crc >> 8);
+    buffer[10] = settings->wifi_save;
+    const uint16_t crc = crc16_ccitt(buffer, SETTINGS_CRC_BYTES_V6);
+    buffer[11] = (uint8_t)(crc & 0xFFu);
+    buffer[12] = (uint8_t)(crc >> 8);
     return ARCHERY_SETTINGS_ENCODED_BYTES;
 }
 
@@ -217,6 +227,9 @@ bool archery_settings_decode(archery_settings_t *settings,
     case SETTINGS_VERSION_V3:
     case SETTINGS_VERSION_V4:
         break;
+    case SETTINGS_VERSION_V5:
+        if (length != ARCHERY_SETTINGS_ENCODED_BYTES_V5) return false;
+        break;
     case SETTINGS_VERSION:
         if (length != ARCHERY_SETTINGS_ENCODED_BYTES) return false;
         break;
@@ -226,6 +239,17 @@ bool archery_settings_decode(archery_settings_t *settings,
 
     archery_settings_t decoded;
     if (buffer[1] == SETTINGS_VERSION) {
+        const uint16_t expected = (uint16_t)(buffer[11] | ((uint16_t)buffer[12] << 8));
+        if (crc16_ccitt(buffer, SETTINGS_CRC_BYTES_V6) != expected) return false;
+        decoded.target = buffer[2];
+        decoded.rotate = buffer[3];
+        decoded.brightness = buffer[4];
+        decoded.off_seconds = (uint16_t)(buffer[5] | ((uint16_t)buffer[6] << 8));
+        decoded.record_x = buffer[7];
+        decoded.voice_enabled = buffer[8];
+        decoded.beep_volume = buffer[9];
+        decoded.wifi_save = buffer[10];
+    } else if (buffer[1] == SETTINGS_VERSION_V5) {
         const uint16_t expected = (uint16_t)(buffer[10] | ((uint16_t)buffer[11] << 8));
         if (crc16_ccitt(buffer, SETTINGS_CRC_BYTES_V5) != expected) return false;
         decoded.target = buffer[2];
@@ -235,6 +259,7 @@ bool archery_settings_decode(archery_settings_t *settings,
         decoded.record_x = buffer[7];
         decoded.voice_enabled = buffer[8];
         decoded.beep_volume = buffer[9];
+        decoded.wifi_save = ARCHERY_SETTINGS_DEFAULT_WIFI_SAVE;
     } else {
         if (length != ARCHERY_SETTINGS_ENCODED_BYTES_V4) return false;
         const uint16_t expected = (uint16_t)(buffer[8] | ((uint16_t)buffer[9] << 8));
@@ -247,6 +272,7 @@ bool archery_settings_decode(archery_settings_t *settings,
         decoded.record_x = buffer[1] == SETTINGS_VERSION_V3 ? 1u : buffer[7];
         decoded.voice_enabled = ARCHERY_SETTINGS_DEFAULT_VOICE;
         decoded.beep_volume = ARCHERY_SETTINGS_DEFAULT_BEEP_VOLUME;
+        decoded.wifi_save = ARCHERY_SETTINGS_DEFAULT_WIFI_SAVE;
     }
     if (!archery_settings_valid(&decoded)) return false;
     *settings = decoded;

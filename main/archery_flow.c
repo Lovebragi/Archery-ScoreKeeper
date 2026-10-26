@@ -172,10 +172,12 @@ static uint8_t face_arrow_offset(const archery_flow_t *flow, uint8_t face) {
 static archery_act_t handle_home(archery_flow_t *flow, archery_key_t key) {
     switch (key) {
     case ARCHERY_KEY_UP:
-        move_cursor(&flow->home_select, -1, 0, ARCHERY_HOME_ITEMS - 1u);
+        flow->home_select = flow->home_select == 0
+                                ? (uint8_t)(ARCHERY_HOME_ITEMS - 1u)
+                                : (uint8_t)(flow->home_select - 1u);
         break;
     case ARCHERY_KEY_DOWN:
-        move_cursor(&flow->home_select, 1, 0, ARCHERY_HOME_ITEMS - 1u);
+        flow->home_select = (uint8_t)((flow->home_select + 1u) % ARCHERY_HOME_ITEMS);
         break;
     case ARCHERY_KEY_OK:
         if (flow->home_select == 0) {
@@ -376,13 +378,13 @@ static archery_act_t handle_clock(archery_flow_t *flow, archery_key_t key) {
         } else {
             // 分字段按确定 = 保存对时并回到设置页的"日期时间"行。
             flow->page = ARCHERY_PAGE_SETTINGS;
-            flow->settings_row = 7;
+            flow->settings_row = 8;
             return ARCHERY_ACT_CLOCK_SAVE;
         }
         break;
     case ARCHERY_KEY_OK_LONG:
         flow->page = ARCHERY_PAGE_SETTINGS;
-        flow->settings_row = 7;
+        flow->settings_row = 8;
         return ARCHERY_ACT_CLOCK_SAVE;
     }
     return ARCHERY_ACT_NONE;
@@ -400,7 +402,7 @@ static archery_act_t handle_settings(archery_flow_t *flow, archery_key_t key) {
         }
         break;
     case ARCHERY_KEY_OK:
-        if (flow->settings_row == 7) {
+        if (flow->settings_row == 8) {
             // 最后一行的"日期时间"：按确定进入手动对时页。
             archery_seconds_to_datetime(flow->clock_now, &flow->clock_fields);
             flow->clock_row = 0;

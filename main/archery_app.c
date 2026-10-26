@@ -17,6 +17,7 @@
 #include "archery_version.h"
 #include "archery_voice.h"
 #include "archery_wifi.h"
+#include "archery_wifi_store.h"
 #include "archery_wifi_view.h"
 #include "bsp_battery.h"
 #include "bsp_button.h"
@@ -182,11 +183,35 @@ static void apply_settings(const archery_settings_t *settings) {
     // 改 MADCTL 时先拿 LVGL 锁，避免和正在进行的刷屏并发。
     s_rotate_keys = settings->rotate != 0;
     archery_voice_set_beep_volume((uint8_t)(settings->beep_volume * 20u));
+    archery_wifi_set_save_enabled(settings->wifi_save != 0);
+    if (!settings->wifi_save) archery_wifi_forget_credentials();
     if (bsp_lvgl_lock(200)) {
         bsp_display_backlight(settings->brightness);
         (void)bsp_display_set_flip_180(settings->rotate != 0);
         bsp_lvgl_unlock();
     }
+}
+
+static bool try_saved_wifi(archery_key_t key) {
+    if (key != ARCHERY_KEY_OK || s_flow.page != ARCHERY_PAGE_WIFI ||
+        s_flow.wifi_mode != 1 || s_flow.wifi_row >= s_flow.wifi_ap_count) {
+        return false;
+    }
+    if (!s_flow.settings.wifi_save) return false;
+    const uint8_t row = s_flow.wifi_row;
+    if (!s_wifi_view.secure[row]) return false;
+    char pass[ARCHERY_WIFI_PASS_SIZE];
+    const bool found =
+        archery_wifi_store_lookup(s_wifi_view.ssid[row], pass, sizeof(pass));
+    ESP_LOGI(TAG, "saved wifi row=%u found=%d", (unsigned)row, (int)found);
+    if (!found) return false;
+    // 回到联网状态页，让"正在连接 / 已连接"可见。
+    s_flow.wifi_mode = 0;
+    s_flow.wifi_row = 0;
+    const esp_err_t err = archery_wifi_connect(s_wifi_view.ssid[row], pass);
+    ESP_LOGI(TAG, "saved wifi connect err=%d", (int)err);
+    redraw();
+    return true;
 }
 
 // Wi-Fi 任务的事件：刷新视图、同步扫描条数，若拿到 NTP 时间就更新时钟。
@@ -634,7 +659,7 @@ static void worker_task(void *argument) {
                     s_pw_swallow_click) {
                     s_pw_swallow_click = false;  // 本次按下已由连发处理
                 } else {
-                    handle_key(message.key);
+                    if (!try_saved_wifi(message.key)) handle_key(message.key);
                 }
             } else if (message.type == APP_MSG_VOICE_START) {
                 if (s_flow.page == ARCHERY_PAGE_ENTRY && s_flow.settings.voice_enabled &&

@@ -112,8 +112,15 @@ static void test_adjust(void) {
     assert(archery_settings_adjust(&settings, 6, 1));
     assert(settings.beep_volume == 1);
 
+    // 保存 Wi-Fi 密码：默认开，任一方向切换
+    assert(settings.wifi_save == 1);
+    assert(archery_settings_adjust(&settings, 7, 1));
+    assert(settings.wifi_save == 0);
+    assert(archery_settings_adjust(&settings, 7, -1));
+    assert(settings.wifi_save == 1);
+
     // 非法行（日期时间在最后一行，不是可调整项）
-    assert(!archery_settings_adjust(&settings, 7, 1));
+    assert(!archery_settings_adjust(&settings, 8, 1));
     assert(!archery_settings_adjust(NULL, 0, 1));
 }
 

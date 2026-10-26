@@ -28,6 +28,11 @@ esp_err_t archery_wifi_connect_index(uint8_t index);
 // 直接连接（供网页配网调用）。
 esp_err_t archery_wifi_connect(const char *ssid, const char *password);
 
+// 是否保存 Wi-Fi 密码（设置页控制）；关闭后不再写入，并清除已保存列表。
+void archery_wifi_set_save_enabled(bool enabled);
+bool archery_wifi_save_enabled(void);
+void archery_wifi_forget_credentials(void);
+
 // 打开设备热点 + 配网网页（preset_ssid 可为 NULL，网页会预填）。
 esp_err_t archery_wifi_start_provisioning(const char *preset_ssid);
 esp_err_t archery_wifi_stop_provisioning(void);

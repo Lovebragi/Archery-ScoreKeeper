@@ -28,6 +28,9 @@ FONTS = (
 UI_SOURCES = (
     ROOT / "main" / "archery_ui.c",
     ROOT / "main" / "archery_score.c",
+    # 语音实验：状态与错误提示直接来自这两个文件，也必须被字库覆盖。
+    ROOT / "main" / "archery_app.c",
+    ROOT / "main" / "archery_voice.c",
 )
 INVENTORY = ROOT / "assets" / "fonts" / "archery_chars.txt"
 # 一个确定不存在的码点，用来证明覆盖检查不是恒真。

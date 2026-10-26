@@ -32,6 +32,7 @@
 
 static lv_obj_t *s_screen;
 static const archery_wifi_view_t *s_wifi_view;
+static const char *s_voice_status;
 
 // ---------------------------------------------------------------------------
 // 基础控件
@@ -368,7 +369,8 @@ static void render_entry(lv_obj_t *scr, const archery_flow_t *flow) {
     lv_obj_center(label);
 
     add_hint(scr, "上/下 数量 · 确定 下一项", 256);
-    add_hint(scr, "长按 上一项 · 首行放弃", 282);
+    add_hint(scr, s_voice_status && s_voice_status[0] ? s_voice_status
+                                                      : "长按 上一项 · 首行放弃", 282);
 }
 
 static void render_summary(lv_obj_t *scr, const archery_flow_t *flow) {
@@ -604,6 +606,7 @@ static void render_detail(lv_obj_t *scr, const archery_flow_t *flow,
 
 // 联网：状态 + 扫描列表 / 手机扫码配网 / 立即对时。
 void archery_ui_set_wifi_view(const archery_wifi_view_t *view) { s_wifi_view = view; }
+void archery_ui_set_voice_status(const char *text) { s_voice_status = text; }
 
 static void render_wifi(lv_obj_t *scr, const archery_flow_t *flow) {
     add_title(scr, "联网");

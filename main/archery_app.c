@@ -10,10 +10,12 @@
 
 #include "archery_flow.h"
 #include "archery_history.h"
+#include "archery_score.h"
 #include "archery_settings.h"
 #include "archery_store.h"
 #include "archery_ui.h"
 #include "archery_version.h"
+#include "archery_voice.h"
 #include "archery_wifi.h"
 #include "archery_wifi_view.h"
 #include "bsp_battery.h"
@@ -38,7 +40,12 @@ static const char *TAG = "archery_app";
 // 息屏浅睡后，唤醒键还按着时先吞掉按键动作，直到松手（最长兜底 5 秒）。
 #define WAKE_GUARD_MAX_US (5LL * 1000 * 1000)
 
-typedef enum { APP_MSG_KEY = 0, APP_MSG_WIFI } app_msg_type_t;
+typedef enum {
+    APP_MSG_KEY = 0,
+    APP_MSG_WIFI,
+    APP_MSG_VOICE_START,
+    APP_MSG_VOICE_STOP,
+} app_msg_type_t;
 
 typedef struct {
     uint8_t type;
@@ -125,6 +132,7 @@ static void redraw(void) {
     archery_flow_set_clock(&s_flow, clock_now(), s_clock_set);
     sync_wifi_flow();
     archery_ui_set_wifi_view(&s_wifi_view);
+    archery_ui_set_voice_status(archery_voice_status());
     if (!bsp_lvgl_lock(500)) {
         ESP_LOGW(TAG, "获取 LVGL 锁超时，跳过本次重绘");
         return;
@@ -353,10 +361,28 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t event, void *user) {
         return;
     }
     const archery_button_t physical = physical_button(btn);
+    if (!s_ready || !s_queue) return;
+
+    // PTT：上键长按开始，松手结束。松手事件只用于结束录音，不产生普通按键。
+    if (event == BSP_BTN_RELEASE) {
+        if (archery_voice_active()) {
+            const app_message_t stop = {.type = APP_MSG_VOICE_STOP};
+            (void)xQueueSend(s_queue, &stop, 0);
+        }
+        return;
+    }
+
     archery_key_t key;
     if (event == BSP_BTN_LONG) {
-        if (!archery_flow_button_is_ok(physical, s_rotate_keys)) return;
-        key = ARCHERY_KEY_OK_LONG;
+        if (archery_flow_button_is_ok(physical, s_rotate_keys)) {
+            key = ARCHERY_KEY_OK_LONG;
+        } else if (archery_flow_button_key(physical, s_rotate_keys) == ARCHERY_KEY_UP) {
+            const app_message_t start = {.type = APP_MSG_VOICE_START};
+            (void)xQueueSend(s_queue, &start, 0);
+            return;
+        } else {
+            return;
+        }
     } else if (event == BSP_BTN_CLICK || event == BSP_BTN_DOUBLE) {
         // 双击窗口内的快速连按会被驱动合并成 DOUBLE；本应用没有双击语义，
         // 按一次单击处理，避免快速调整数值时"按键失灵"。
@@ -364,7 +390,6 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t event, void *user) {
     } else {
         return;
     }
-    if (!s_ready || !s_queue) return;
     const app_message_t message = {.type = APP_MSG_KEY, .key = key};
     (void)xQueueSend(s_queue, &message, 0);
 }
@@ -434,12 +459,88 @@ static void light_sleep_now(void) {
              (unsigned)causes);
 }
 
+// 把语音识别结果写入当前靶面的录入计数；只接受正好凑满本组箭数的结果。
+static void apply_voice_result(const archery_voice_result_t *result) {
+    const char *failure = NULL;
+    if (!result->ok) {
+        failure = "没听清，请重说";
+    } else if (s_flow.page != ARCHERY_PAGE_ENTRY) {
+        failure = "已忽略（不在录入页）";
+    }
+
+    const uint8_t target = s_flow.session.target;
+    const bool faces = archery_flow_target_has_faces(target);
+    const uint8_t face = faces ? s_flow.entry_face : 0;
+    const uint8_t slots = archery_target_slot_count(target);
+    const uint8_t face_arrows = faces ? s_flow.setup_face[face] : s_flow.session.arrows;
+    uint8_t counts[ARCHERY_RING_SLOT_MAX];
+    memset(counts, 0, sizeof(counts));
+
+    uint16_t total = 0;
+    bool has_all = false;
+    uint8_t all_slot = 0xFF;
+
+    if (!failure) {
+        for (uint8_t i = 0; i < result->count; i++) {
+            const archery_voice_item_t *item = &result->items[i];
+            uint8_t slot = 0xFF;
+            for (uint8_t s = 0; s < slots; s++) {
+                if (archery_target_slot_code(target, s) == item->ring) {
+                    slot = s;
+                    break;
+                }
+            }
+            if (slot == 0xFF) {
+                failure = "环值不在本靶型";
+                break;
+            }
+            if (item->all) {
+                if (has_all) {
+                    failure = "重复的全量项";
+                    break;
+                }
+                has_all = true;
+                all_slot = slot;
+                continue;
+            }
+            counts[slot] = (uint8_t)(counts[slot] + item->count);
+            total += item->count;
+        }
+    }
+    if (!failure && has_all) {
+        if (total >= face_arrows) {
+            failure = "数量超出本组";
+        } else {
+            counts[all_slot] = (uint8_t)(face_arrows - total);
+            total = face_arrows;
+        }
+    }
+    if (!failure && total != face_arrows) {
+        failure = "数量对不上，请重说";
+    }
+
+    if (failure) {
+        archery_voice_set_status(failure);
+    } else {
+        memcpy(s_flow.counts[face], counts, slots);
+        const uint8_t first = archery_target_entry_first_slot(target,
+                                                             s_flow.settings.record_x);
+        s_flow.entry_row = (uint8_t)(slots - first);
+        archery_voice_set_status("已填入，确定提交");
+    }
+    redraw();
+}
+
 static void worker_task(void *argument) {
     (void)argument;
     s_next_battery_us = esp_timer_get_time();
     for (;;) {
+        archery_voice_result_t voice;
+        if (archery_voice_take_result(&voice)) {
+            apply_voice_result(&voice);
+        }
         app_message_t message;
-        TickType_t wait = pdMS_TO_TICKS(500);
+        TickType_t wait = archery_voice_active() ? pdMS_TO_TICKS(100) : pdMS_TO_TICKS(500);
         if (s_flow.page == ARCHERY_PAGE_WIFI_PASSWORD) wait = pdMS_TO_TICKS(60);
         if (xQueueReceive(s_queue, &message, wait) == pdTRUE) {
             s_last_input_us = esp_timer_get_time();
@@ -451,6 +552,20 @@ static void worker_task(void *argument) {
                 } else {
                     handle_key(message.key);
                 }
+            } else if (message.type == APP_MSG_VOICE_START) {
+                if (s_flow.page == ARCHERY_PAGE_ENTRY && archery_voice_enabled() &&
+                    !archery_voice_active()) {
+                    const bool faces = archery_flow_target_has_faces(s_flow.session.target);
+                    const uint8_t face = faces ? s_flow.entry_face : 0;
+                    archery_voice_set_context(s_flow.session.target,
+                                              faces ? s_flow.setup_face[face]
+                                                    : s_flow.session.arrows);
+                    archery_voice_set_status("录音中，松手结束");
+                    redraw();
+                    (void)archery_voice_start();
+                }
+            } else if (message.type == APP_MSG_VOICE_STOP) {
+                archery_voice_stop();
             } else {
                 handle_wifi_event();
             }
@@ -526,6 +641,10 @@ void archery_app_start(void) {
     }
     archery_wifi_fill_view(&s_wifi_view);
     archery_flow_set_wifi_scan(&s_flow, s_wifi_view.ap_count);
+
+    if (archery_voice_init() != ESP_OK) {
+        ESP_LOGW(TAG, "语音模块初始化失败，语音报靶不可用");
+    }
 
     redraw();
 

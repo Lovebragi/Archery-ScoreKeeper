@@ -7,6 +7,8 @@
 // - 时间按 UTC+8 换算成本地墙上时间（2000 起算的秒），交给应用写 NVS。
 #include "archery_wifi.h"
 
+#include "archery_voice.h"
+
 #include "archery_clock.h"
 #include "esp_event.h"
 #include "esp_http_server.h"
@@ -286,8 +288,18 @@ static const char *PROV_HTML =
     " spellcheck=false autocomplete=off>"
     "<input id=pass type=password placeholder='Wi-Fi 密码' autocapitalize=none"
     " autocorrect=off spellcheck=false autocomplete=off>"
+    "<div class=muted style='margin-top:18px'>语音服务地址（局域网代理，可留空）</div>"
+    "<input id=voice placeholder='http://192.168.1.10:8765/asr' autocapitalize=none"
+    " autocorrect=off spellcheck=false autocomplete=off>"
+    "<button onclick=saveVoice()>保存语音地址</button>"
     "<button onclick=go()>连接</button><div id=msg class=muted style='margin-top:12px'></div><script>"
-    "let ssid=document.getElementById('ssid'),pass=document.getElementById('pass'),msg=document.getElementById('msg');"
+    "let ssid=document.getElementById('ssid'),pass=document.getElementById('pass'),"
+    "voice=document.getElementById('voice'),msg=document.getElementById('msg');"
+    "fetch('/voice').then(r=>r.text()).then(t=>{voice.value=t});"
+    "function saveVoice(){fetch('/voice-url',{method:'POST',"
+    "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+    "body:'url='+encodeURIComponent(voice.value)}).then(r=>r.text())"
+    ".then(t=>{msg.textContent=t})}"
     "function scan(force){let ctrl=new AbortController();let t=setTimeout(()=>ctrl.abort(),6000);"
     "fetch('/scan'+(force?'?force=1':''),{signal:ctrl.signal}).then(r=>r.json()).then(a=>{clearTimeout(t);"
     "let l=document.getElementById('list');l.innerHTML='';"
@@ -412,6 +424,33 @@ static esp_err_t http_connect(httpd_req_t *req) {
     return ESP_OK;
 }
 
+static esp_err_t http_voice_get(httpd_req_t *req) {
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    return httpd_resp_sendstr(req, archery_voice_url());
+}
+
+static esp_err_t http_voice_set(httpd_req_t *req) {
+    char body[192];
+    const int received = httpd_req_recv(req, body, sizeof(body) - 1);
+    if (received <= 0) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "no body");
+    body[received] = '\0';
+
+    char url[128] = {0};
+    char *value = strstr(body, "url=");
+    if (value) {
+        value += 4;
+        char *end = strchr(value, '&');
+        if (end) *end = '\0';
+        strncpy(url, value, sizeof(url) - 1);
+        url_decode(url);
+    }
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    if (archery_voice_save_url(url) != ESP_OK) {
+        return httpd_resp_sendstr(req, "地址无效，需要 http://IP:端口/路径");
+    }
+    return httpd_resp_sendstr(req, url[0] ? "已保存语音地址" : "语音地址已清空");
+}
+
 static esp_err_t http_redirect(httpd_req_t *req) {
     (void)req;
     httpd_resp_set_status(req, "302 Found");
@@ -453,7 +492,7 @@ static esp_err_t http_history_csv(httpd_req_t *req) {
 
 static void start_httpd(void) {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 12;
+    config.max_uri_handlers = 16;
     config.stack_size = 6144;
     if (httpd_start(&s_httpd, &config) != ESP_OK) {
         ESP_LOGE(TAG, "HTTP 服务器启动失败");
@@ -469,12 +508,18 @@ static void start_httpd(void) {
     const httpd_uri_t diag_uri = {.uri = "/diag", .method = HTTP_GET, .handler = http_diag};
     const httpd_uri_t csv_uri = {.uri = "/history.csv", .method = HTTP_GET,
                                  .handler = http_history_csv};
+    const httpd_uri_t voice_get_uri = {.uri = "/voice", .method = HTTP_GET,
+                                       .handler = http_voice_get};
+    const httpd_uri_t voice_set_uri = {.uri = "/voice-url", .method = HTTP_POST,
+                                       .handler = http_voice_set};
     httpd_register_uri_handler(s_httpd, &index_uri);
     httpd_register_uri_handler(s_httpd, &scan_uri);
     httpd_register_uri_handler(s_httpd, &status_uri);
     httpd_register_uri_handler(s_httpd, &connect_uri);
     httpd_register_uri_handler(s_httpd, &diag_uri);
     httpd_register_uri_handler(s_httpd, &csv_uri);
+    httpd_register_uri_handler(s_httpd, &voice_get_uri);
+    httpd_register_uri_handler(s_httpd, &voice_set_uri);
     // iOS/Android 的联网探测：跳转到配网页，手机才会自动弹出登录页。
     static const char *probe_paths[] = {"/hotspot-detect.html", "/generate_204",
                                         "/connecttest.txt", "/ncsi.txt"};

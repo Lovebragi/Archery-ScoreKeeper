@@ -13,5 +13,8 @@ void archery_ui_show(const archery_flow_t *flow, const archery_history_t *histor
 // 联网页的只读视图（应用在刷新前设置；为空时显示"模块未初始化"）。
 void archery_ui_set_wifi_view(const archery_wifi_view_t *view);
 
+// 录入页的语音状态文字（实验功能）；NULL 或空串表示不显示。
+void archery_ui_set_voice_status(const char *text);
+
 // 删除当前应用界面（退出应用时调用）。
 void archery_ui_clear(void);

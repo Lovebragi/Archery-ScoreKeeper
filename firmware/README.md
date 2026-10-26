@@ -5,10 +5,10 @@
 # Prebuilt firmware
 
 `FoloToy-AI-Passport-full.bin` is the merged image (bootloader + partition table
-+ application) for the archery scorekeeper v1.2.0.
++ application) for the archery scorekeeper v1.2.1.
 
 - Target: ESP32-C3, 8 MB Flash, ESP-IDF 5.5.3
-- SHA-256: `293a44834509de2f8522cb82d3935224e42c2ac4fba0a062d90df06edc4738d5`
+- SHA-256: `24d9361ce8a73ef4f4cbf729c6b6116304bf1a0e90d906164b5d62e82b0796aa`
 - Flash offset: `0x0`
 
 ```bash

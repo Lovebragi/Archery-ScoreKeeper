@@ -109,7 +109,7 @@ static void clock_persist(bool force) {
     }
 }
 
-// 把 Wi-Fi 视图同步到 flow（扫描条数与哪些网络加密）。
+// 把 Wi-Fi 视图同步到 flow（扫描条数、加密网络与配网状态）。
 static void sync_wifi_flow(void) {
     archery_wifi_fill_view(&s_wifi_view);
     archery_flow_set_wifi_scan(&s_flow, s_wifi_view.ap_count);
@@ -118,6 +118,7 @@ static void sync_wifi_flow(void) {
         if (s_wifi_view.secure[i]) mask = (uint8_t)(mask | (1u << i));
     }
     archery_flow_set_wifi_security(&s_flow, mask);
+    archery_flow_set_wifi_provisioning(&s_flow, archery_wifi_provisioning());
 }
 
 static void redraw(void) {
@@ -302,7 +303,13 @@ static void handle_key(archery_key_t key) {
         break;
     }
     case ARCHERY_ACT_WIFI_PROVISION:
-        (void)archery_wifi_start_provisioning(NULL);
+        // flow 依据 wifi_provisioning 选择开或停；这里再查一次运行态，
+        // 避免事件回调尚未同步时把"停止"又变成一次幂等的 start。
+        if (archery_wifi_provisioning()) {
+            (void)archery_wifi_stop_provisioning();
+        } else {
+            (void)archery_wifi_start_provisioning(NULL);
+        }
         break;
     case ARCHERY_ACT_WIFI_SYNC_TIME:
         (void)archery_wifi_sync_time();

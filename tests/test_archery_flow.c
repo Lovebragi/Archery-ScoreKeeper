@@ -594,6 +594,15 @@ static void test_wifi_page(void) {
     press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.wifi_row == 1);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_WIFI_PROVISION);
+    // 配网热点已开时再按"确定"= 停止配网并留在联网菜单（UI 提示"确定 停止配网"）。
+    // 回归：此前这里无条件返回 WIFI_PROVISION，start 在已运行时直接返回 ESP_OK，
+    // 表现为短按确定毫无反应，只能长按回主页。
+    archery_flow_set_wifi_provisioning(&flow, true);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_WIFI_STOP);
+    assert(flow.page == ARCHERY_PAGE_WIFI);
+    assert(flow.wifi_mode == 0 && flow.wifi_row == 1);
+    archery_flow_set_wifi_provisioning(&flow, false);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_WIFI_PROVISION);
     press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.wifi_row == 2);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_WIFI_SYNC_TIME);

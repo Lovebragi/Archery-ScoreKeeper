@@ -8,6 +8,14 @@ Release history for the archery scorekeeper application. The repository-wide
 [changelog](../CHANGELOG.md) tracks the AI Passport project itself; this file
 follows the application's firmware versions.
 
+## 1.2.1 — 2026-10-26
+
+### Fixed
+
+- Short-pressing OK on the "Phone setup / export" QR page now stops the setup
+  hotspot and returns to the Network menu. Previously the press did nothing and
+  only a long press could leave the page.
+
 ## 1.2.0 — 2026-10-25
 
 ### Added

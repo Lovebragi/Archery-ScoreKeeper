@@ -107,6 +107,11 @@ void archery_flow_set_wifi_scan(archery_flow_t *flow, uint8_t ap_count) {
     }
 }
 
+void archery_flow_set_wifi_provisioning(archery_flow_t *flow, bool active) {
+    if (!flow) return;
+    flow->wifi_provisioning = active;
+}
+
 // 物理按键角色映射：自然方向就是"上/下/确定"；整机倒装时角色转 180°。
 archery_key_t archery_flow_button_key(archery_button_t button, bool rotate_roles) {
     if (rotate_roles) {
@@ -263,7 +268,10 @@ static archery_act_t handle_wifi(archery_flow_t *flow, archery_key_t key) {
                 flow->wifi_row = 0;
                 return ARCHERY_ACT_WIFI_SCAN;
             case 1:
-                return ARCHERY_ACT_WIFI_PROVISION;
+                // 配网热点已开：再按"确定"是停止配网并留在联网菜单（UI 提示
+                // "确定 停止配网"）。不区分状态地重复 start 会让短按看起来没反应。
+                return flow->wifi_provisioning ? ARCHERY_ACT_WIFI_STOP
+                                               : ARCHERY_ACT_WIFI_PROVISION;
             case 2:
                 return ARCHERY_ACT_WIFI_SYNC_TIME;
             case 3:

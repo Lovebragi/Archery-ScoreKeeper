@@ -105,6 +105,7 @@ typedef struct {
     bool clock_set;         // 是否已经手动校准过（显示"时间未校准"提示）
     uint8_t wifi_row;       // 联网页光标
     uint8_t wifi_mode;      // 0 = 菜单, 1 = 扫描结果列表
+    bool wifi_provisioning; // 配网热点是否正在运行（由上层同步，决定"确定"是开还是停）
     uint8_t wifi_ap_count;  // 扫描到的网络数（列表末行是"返回"）
     uint8_t wifi_secure_mask;  // 扫描结果里哪些是加密网络（bit0 = 第 1 个）
     uint8_t wifi_target;    // 正在输入密码的网络下标
@@ -136,6 +137,8 @@ void archery_flow_set_clock(archery_flow_t *flow, uint32_t now, bool time_set);
 // 扫描结果条数由上层同步，列表光标会随之钳制。
 void archery_flow_set_wifi_scan(archery_flow_t *flow, uint8_t ap_count);
 void archery_flow_set_wifi_security(archery_flow_t *flow, uint8_t secure_mask);
+// 配网热点开关状态由上层同步；菜单第 2 行在配网中再按"确定"表示停止配网。
+void archery_flow_set_wifi_provisioning(archery_flow_t *flow, bool active);
 
 // 设备端密码输入使用的小工具（也便于主机测试）。
 char archery_wifi_password_char(uint8_t index);

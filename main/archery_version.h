@@ -4,6 +4,6 @@
 // 实验版（联网 / NTP 等新功能）和稳定版区分开，界面与日志都会显示通道。
 #pragma once
 
-#define ARCHERY_FIRMWARE_VERSION "1.2.0"
+#define ARCHERY_FIRMWARE_VERSION "1.2.1"
 #define ARCHERY_FIRMWARE_CHANNEL "正式版"
 #define ARCHERY_FIRMWARE_CHANNEL_EN "release"

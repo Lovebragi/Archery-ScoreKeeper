@@ -30,6 +30,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "key_guard.h"
+#include <stdio.h>
 #include <string.h>
 
 static const char *TAG = "archery_app";
@@ -64,6 +65,10 @@ static volatile bool s_ready;
 // 按键角色是否随屏幕 180° 倒转。按钮任务读取，设置页修改，用独立的 volatile
 // 变量避免和 flow 结构体的其它字段一起被读到中间状态。
 static volatile bool s_rotate_keys = (ARCHERY_SETTINGS_DEFAULT_ROTATE != 0);
+// 联网页/配网中不浅睡，但长时间停留时只关背光，保持热点。
+static bool s_wifi_dimmed;
+static esp_timer_handle_t s_ptt_timer;
+static volatile bool s_ptt_used;
 // 按键唤醒后，那颗键在整个启动期间还按着；在它松手前丢弃按键动作，
 // 避免把"唤醒键仍在按"误判成长按。
 static key_guard_t s_key_guard;
@@ -348,6 +353,14 @@ static archery_button_t physical_button(bsp_btn_t btn) {
     }
 }
 
+static void ptt_timer_cb(void *arg) {
+    (void)arg;
+    s_ptt_used = true;
+    if (!s_queue) return;
+    const app_message_t start = {.type = APP_MSG_VOICE_START};
+    (void)xQueueSend(s_queue, &start, 0);
+}
+
 // button 回调运行在共享 esp_timer 任务：只做映射与入队，不碰 LVGL、不阻塞。
 static void on_key(bsp_btn_t btn, bsp_btn_ev_t event, void *user) {
     (void)user;
@@ -363,8 +376,17 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t event, void *user) {
     const archery_button_t physical = physical_button(btn);
     if (!s_ready || !s_queue) return;
 
-    // PTT：上键长按开始，松手结束。松手事件只用于结束录音，不产生普通按键。
+    // PTT：按下 200 ms 后开始录音（短按仍算单击），松手结束。
+    if (event == BSP_BTN_PRESS) {
+        if (archery_flow_button_key(physical, s_rotate_keys) == ARCHERY_KEY_UP &&
+            s_flow.page == ARCHERY_PAGE_ENTRY && s_ptt_timer) {
+            (void)esp_timer_stop(s_ptt_timer);
+            (void)esp_timer_start_once(s_ptt_timer, 200000);
+        }
+        return;
+    }
     if (event == BSP_BTN_RELEASE) {
+        if (s_ptt_timer) (void)esp_timer_stop(s_ptt_timer);
         if (archery_voice_active()) {
             const app_message_t stop = {.type = APP_MSG_VOICE_STOP};
             (void)xQueueSend(s_queue, &stop, 0);
@@ -376,14 +398,14 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t event, void *user) {
     if (event == BSP_BTN_LONG) {
         if (archery_flow_button_is_ok(physical, s_rotate_keys)) {
             key = ARCHERY_KEY_OK_LONG;
-        } else if (archery_flow_button_key(physical, s_rotate_keys) == ARCHERY_KEY_UP) {
-            const app_message_t start = {.type = APP_MSG_VOICE_START};
-            (void)xQueueSend(s_queue, &start, 0);
-            return;
         } else {
-            return;
+            return;  // 上键长按已是 PTT，不再产生普通事件
         }
     } else if (event == BSP_BTN_CLICK || event == BSP_BTN_DOUBLE) {
+        if (s_ptt_used) {
+            s_ptt_used = false;  // 这次按键已经用于语音，吞掉单击
+            return;
+        }
         // 双击窗口内的快速连按会被驱动合并成 DOUBLE；本应用没有双击语义，
         // 按一次单击处理，避免快速调整数值时"按键失灵"。
         key = archery_flow_button_key(physical, s_rotate_keys);
@@ -515,8 +537,8 @@ static void apply_voice_result(const archery_voice_result_t *result) {
             total = face_arrows;
         }
     }
-    if (!failure && total != face_arrows) {
-        failure = "数量对不上，请重说";
+    if (!failure && total > face_arrows) {
+        failure = "数量超出本组";
     }
 
     if (failure) {
@@ -525,8 +547,16 @@ static void apply_voice_result(const archery_voice_result_t *result) {
         memcpy(s_flow.counts[face], counts, slots);
         const uint8_t first = archery_target_entry_first_slot(target,
                                                              s_flow.settings.record_x);
-        s_flow.entry_row = (uint8_t)(slots - first);
-        archery_voice_set_status("已填入，确定提交");
+        if (total == face_arrows) {
+            s_flow.entry_row = (uint8_t)(slots - first);
+            archery_voice_set_status("已填入，确定提交");
+        } else {
+            s_flow.entry_row = 0;
+            char status[40];
+            snprintf(status, sizeof(status), "已填入，还差 %u 支",
+                     (unsigned)(face_arrows - total));
+            archery_voice_set_status(status);
+        }
     }
     redraw();
 }
@@ -544,6 +574,13 @@ static void worker_task(void *argument) {
         if (s_flow.page == ARCHERY_PAGE_WIFI_PASSWORD) wait = pdMS_TO_TICKS(60);
         if (xQueueReceive(s_queue, &message, wait) == pdTRUE) {
             s_last_input_us = esp_timer_get_time();
+            if (s_wifi_dimmed) {
+                if (bsp_lvgl_lock(200)) {
+                    bsp_display_backlight(s_flow.settings.brightness);
+                    bsp_lvgl_unlock();
+                }
+                s_wifi_dimmed = false;
+            }
             if (message.type == APP_MSG_KEY) {
                 if (s_flow.page == ARCHERY_PAGE_WIFI_PASSWORD &&
                     (message.key == ARCHERY_KEY_UP || message.key == ARCHERY_KEY_DOWN) &&
@@ -589,6 +626,18 @@ static void worker_task(void *argument) {
             s_flow.page != ARCHERY_PAGE_WIFI_PASSWORD &&
             !archery_wifi_provisioning()) {
             light_sleep_now();
+        }
+        // 联网页/配网中不浅睡（会断热点），只关背光；任意键恢复。
+        const bool wifi_page = s_flow.page == ARCHERY_PAGE_WIFI ||
+                               s_flow.page == ARCHERY_PAGE_WIFI_PASSWORD ||
+                               archery_wifi_provisioning();
+        if (wifi_page && !s_wifi_dimmed &&
+            now - s_last_input_us >= (int64_t)120 * 1000000) {
+            if (bsp_lvgl_lock(200)) {
+                bsp_display_backlight(0);
+                bsp_lvgl_unlock();
+                s_wifi_dimmed = true;
+            }
         }
     }
 }
@@ -652,6 +701,11 @@ void archery_app_start(void) {
     if (!s_queue) {
         ESP_LOGE(TAG, "按键队列创建失败，界面只读");
         return;
+    }
+    const esp_timer_create_args_t ptt_args = {.callback = ptt_timer_cb, .name = "ptt"};
+    if (esp_timer_create(&ptt_args, &s_ptt_timer) != ESP_OK) {
+        ESP_LOGW(TAG, "PTT 定时器创建失败，语音改用长按");
+        s_ptt_timer = NULL;
     }
     if (xTaskCreate(worker_task, "archery", WORKER_STACK_BYTES, NULL, 5, &s_worker) != pdPASS) {
         ESP_LOGE(TAG, "应用任务创建失败，界面只读");

@@ -295,14 +295,28 @@ static void play_tone(uint16_t hz, uint16_t ms, int repeat, uint16_t gap_ms) {
 
 // 直连豆包流式识别：录完一段后解析成环值条目。
 static void run_ws_session(void) {
-    if (!archery_ws_open(s_appid, s_token)) {
-        archery_voice_set_status("连不上豆包");
-        play_tone(600, 150, 2, 100);
-        s_result_ready = true;
-        return;
+    if (!archery_ws_connected()) {
+        if (!archery_ws_open(s_appid, s_token)) {
+            archery_voice_set_status("连不上豆包");
+            play_tone(600, 150, 2, 100);
+            s_result_ready = true;
+            return;
+        }
     }
     archery_voice_set_status("录音中，松手结束");
     play_tone(1000, 80, 1, 0);
+
+    // 预热连接可能已被服务端关闭：先发 10 ms 静音探活，失败就重连一次。
+    int16_t probe[160] = {0};
+    if (!archery_ws_send_audio(probe, 160, false)) {
+        archery_ws_close();
+        if (!archery_ws_open(s_appid, s_token)) {
+            archery_voice_set_status("连不上豆包");
+            play_tone(600, 150, 2, 100);
+            s_result_ready = true;
+            return;
+        }
+    }
 
     uint8_t pcm[640];
     const int64_t started = esp_timer_get_time();
@@ -328,6 +342,7 @@ static void run_ws_session(void) {
 
     archery_speech_result_t parsed;
     archery_speech_parse(latest, s_target, s_arrows, &parsed);
+    ESP_LOGI(TAG, "asr=%s ok=%d", latest, (int)parsed.ok);
     memset(&s_result, 0, sizeof(s_result));
     if (parsed.ok) {
         s_result.ok = true;
@@ -449,7 +464,7 @@ esp_err_t archery_voice_init(void) {
     load_credentials();
     s_start_sem = xSemaphoreCreateBinary();
     if (!s_start_sem) return ESP_ERR_NO_MEM;
-    if (xTaskCreate(voice_task, "voice", 10240, NULL, 4, &s_task) != pdPASS) {
+    if (xTaskCreate(voice_task, "voice", 16384, NULL, 4, &s_task) != pdPASS) {
         vSemaphoreDelete(s_start_sem);
         s_start_sem = NULL;
         return ESP_ERR_NO_MEM;
@@ -457,6 +472,21 @@ esp_err_t archery_voice_init(void) {
     archery_voice_set_status(archery_voice_enabled() ? "长按上键说话" : "语音未配置");
     ESP_LOGI(TAG, "voice ready, url=%s", s_url[0] ? s_url : "(none)");
     return ESP_OK;
+}
+
+static void prewarm_task(void *arg) {
+    (void)arg;
+    if (!archery_ws_connected() && archery_voice_has_credentials() && !s_active) {
+        if (archery_ws_open(s_appid, s_token)) {
+            archery_voice_set_status("语音就绪");
+        }
+    }
+    vTaskDelete(NULL);
+}
+
+void archery_voice_prewarm(void) {
+    if (!archery_voice_has_credentials() || archery_ws_connected() || s_active) return;
+    xTaskCreate(prewarm_task, "voice_pre", 12288, NULL, 3, NULL);
 }
 
 esp_err_t archery_voice_start(void) {

@@ -104,8 +104,56 @@ static void test_all_phrases(void) {
     assert(result.items[1].all && result.items[1].ring == 9);
 }
 
+static void test_erhua_and_homophones(void) {
+    const uint8_t r9[] = {9};
+    const uint8_t c3[] = {3};
+    expect_ok("三根儿九环", 3, ARCHERY_TARGET_HALF_40, r9, c3, 1);
+    expect_ok("三跟儿九环", 3, ARCHERY_TARGET_HALF_40, r9, c3, 1);
+
+    archery_speech_result_t result;
+    archery_speech_parse("全都是九", ARCHERY_TARGET_HALF_40, 6, &result);
+    assert(result.ok && result.items[0].all && result.items[0].ring == 9);
+    archery_speech_parse("全都是酒", ARCHERY_TARGET_HALF_40, 6, &result);
+    assert(result.ok && result.items[0].all && result.items[0].ring == 9);
+    archery_speech_parse("全都是是", ARCHERY_TARGET_HALF_40, 6, &result);
+    assert(result.ok && result.items[0].all && result.items[0].ring == 10);
+
+    // 流式识别常见同音：仨→撒、九→酒、八→吧
+    const uint8_t rings[] = {9, 8};
+    const uint8_t counts[] = {3, 3};
+    expect_ok("撒酒撒吧", 6, ARCHERY_TARGET_HALF_40, rings, counts, 2);
+
+    // 仨→沙、十→石、脱靶→拖把
+    const uint8_t rings2[] = {10, 0};
+    const uint8_t counts2[] = {3, 3};
+    expect_ok("沙石沙拖把", 6, ARCHERY_TARGET_HALF_40, rings2, counts2, 2);
+}
+
+static void test_partial(void) {
+    archery_speech_result_t result;
+    archery_speech_parse("十环三根", ARCHERY_TARGET_HALF_40, 6, &result);
+    assert(result.ok);
+    assert(result.count == 1 && result.items[0].ring == 10 && result.items[0].count == 3);
+    assert(result.missing == 3);
+}
+
+static void test_eleven_split(void) {
+    // ASR 把"俩十 一九"连读成"俩十一九"：箭数 6 时不能当 11，应拆成 10 + 1。
+    const uint8_t rings[] = {10, 9, 8};
+    const uint8_t counts[] = {2, 1, 2};
+    archery_speech_result_t result;
+    archery_speech_parse("俩十一九俩八", ARCHERY_TARGET_HALF_40, 6, &result);
+    assert(result.ok);
+    assert(result.count == 3);
+    assert(result.missing == 1);
+    for (int i = 0; i < 3; i++) {
+        assert(result.items[i].ring == rings[i]);
+        assert(result.items[i].count == counts[i]);
+    }
+}
+
 static void test_failures(void) {
-    expect_error("十环三根", 6, ARCHERY_TARGET_HALF_40, ARCHERY_SPEECH_MISMATCH);
+    expect_error("十环", 6, ARCHERY_TARGET_HALF_40, ARCHERY_SPEECH_INCOMPLETE);
     expect_error("十环", 6, ARCHERY_TARGET_HALF_40, ARCHERY_SPEECH_INCOMPLETE);
     expect_error("不知道", 6, ARCHERY_TARGET_HALF_40, ARCHERY_SPEECH_UNPARSED);
     expect_error("四环两根", 2, ARCHERY_TARGET_HALF_40, ARCHERY_SPEECH_RING_INVALID);
@@ -120,6 +168,9 @@ int main(void) {
     test_bare_pairs();
     test_group();
     test_all_phrases();
+    test_erhua_and_homophones();
+    test_partial();
+    test_eleven_split();
     test_failures();
     puts("archery speech parser tests: PASS");
     return 0;

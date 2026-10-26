@@ -8,6 +8,32 @@ Release history for the archery scorekeeper application. The repository-wide
 [changelog](../CHANGELOG.md) tracks the AI Passport project itself; this file
 follows the application's firmware versions.
 
+## 1.3.0 — 2026-10-26
+
+### Added
+
+- Voice scoring: press and hold the up button on the entry screen for about
+  0.2 s, then say the rings for a full or partial end. The device talks to the
+  Doubao streaming speech model 2.0 directly; parsing, homophone correction and
+  scoring all run on the device, with no PC or LAN proxy.
+- The provisioning page gained a "Doubao credentials" section: enter the APPID
+  and Access Token; both are stored in NVS and the token is never echoed back.
+- Partial ends (the screen says how many arrows remain), whole-end phrases such
+  as "all nines" / "the rest are eights", colloquial forms (sa, lia, erhua) and
+  common homophones are supported.
+
+### Changed
+
+- Voice needs a Volcano Engine account with the "Doubao streaming speech model
+  2.0" service enabled; new accounts get 20 free hours. Without credentials the
+  keypad workflow is unchanged.
+
+### Fixed
+
+- On the network, Wi-Fi password and provisioning screens, two minutes without
+  input now only turns the backlight off while the hotspot and page stay alive;
+  any key restores it immediately instead of leaving the screen lit.
+
 ## 1.2.3 — 2026-10-26
 
 ### Added

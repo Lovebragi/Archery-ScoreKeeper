@@ -11,7 +11,8 @@ again from the history screen with an all / today / last-7-days filter. An
 optional Wi-Fi page connects to a router for NTP time sync, with phone-based
 provisioning or on-device password entry. The
 application owns the display and the three buttons; it never uses the baseline
-test menu and needs no network, audio, or cloud account.
+test menu. Voice scoring is optional and needs your own Volcano Engine account;
+without it every other feature works unchanged.
 
 ## Scoring model
 
@@ -80,6 +81,58 @@ starting from a full-house maximum. The commit row shows either the remaining
 arrow count or the group's ring total. As soon as the counts add up, OK jumps
 straight from the current ring row to the commit row, so a full group takes one
 more OK instead of walking through the remaining empty rows.
+
+## Voice scoring (optional)
+
+On the entry screen, hold the up button for about 0.2 s, wait for the beep,
+say the rings for the end, and release. The device streams audio to the Doubao
+streaming speech model 2.0; **parsing, ring validation, homophone correction and
+scoring all run on the device**, with no PC or LAN proxy.
+
+### Prepare an account
+
+1. Register and verify a Volcano Engine account: <https://www.volcengine.com/>.
+   Verification scans a WeChat or Douyin QR code and uses the camera (about two
+   minutes); unverified accounts cannot enable speech services.
+2. Enable "Doubao streaming speech model 2.0" (new accounts get 20 free hours):
+   <https://console.volcengine.com/speech/service/10038>.
+3. Create or pick an application on that page and note its **APPID** and
+   **Access Token**. The token can be reset; keep it on your own device and do
+   not post it publicly.
+
+### Configure from a phone
+
+1. On the device open **Network → Phone setup / export**, then join the
+   `Archery-Setup` hotspot from the phone.
+2. Open `http://192.168.4.1/`, fill APPID and Access Token under "Doubao
+   credentials" and save; the token is not echoed back.
+3. Connect the home **2.4 GHz** Wi-Fi on the same page, then return to the
+   entry screen.
+
+### Phrases
+
+| Case | Example |
+| --- | --- |
+| Whole end | ten ring three, nine ring two, one miss |
+| Partial | three nines (screen says "3 arrows left") |
+| Whole-end phrasing | all nines / the rest are eights / all tens |
+| Colloquial | sa tens, two misses, three nine (erhua), two tens, one nine, two eights |
+
+A partial end is filled as spoken with a reminder of the remaining arrows; an
+over-count is rejected. A failed recognition plays two low beeps and the keypad
+path stays available. Common homophones (sa/sha for three, jiu for nine, ba for
+eight, shi for ten, tuoba for miss) are corrected automatically.
+
+### Limits and privacy
+
+- Requires Wi-Fi; one recording is capped at 8 seconds. The 20 free hours are
+  billed by audio duration; a six-arrow end takes about 2–4 seconds, so roughly
+  twenty thousand ends (check your own console bill).
+- Audio is uploaded to Volcano Engine for recognition. APPID and Access Token
+  live only in device NVS: they are not compiled into the firmware and are not
+  sent anywhere else.
+- Without credentials the voice entry is unavailable; scoring, history and CSV
+  export are unaffected.
 
 ## Persistence
 

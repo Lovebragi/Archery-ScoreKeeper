@@ -46,6 +46,9 @@ const char *archery_voice_appid(void);
 const char *archery_voice_token(void);
 bool archery_voice_has_credentials(void);
 
+// 进入录入页时预热 WSS 连接，按下后能立刻开始录音。
+void archery_voice_prewarm(void);
+
 // 识别完成的结果（消费一次）。
 bool archery_voice_take_result(archery_voice_result_t *out);
 

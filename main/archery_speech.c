@@ -14,6 +14,13 @@ static const word_t NUMERALS[] = {
     {"十一", 11}, {"十二", 12}, {"十", 10}, {"零", 0}, {"〇", 0}, {"洞", 0},
     {"一", 1}, {"二", 2}, {"两", 2}, {"俩", 2}, {"三", 3}, {"仨", 3},
     {"四", 4}, {"五", 5}, {"六", 6}, {"七", 7}, {"八", 8}, {"九", 9},
+    // 常见同音错听（流式识别里很常见）
+    {"壹", 1}, {"贰", 2}, {"叁", 3}, {"肆", 4}, {"伍", 5}, {"陆", 6},
+    {"柒", 7}, {"捌", 8}, {"玖", 9}, {"拾", 10}, {"是", 10}, {"时", 10},
+    {"酒", 9}, {"久", 9}, {"韭", 9}, {"起", 7}, {"其", 7},
+    {"衣", 1}, {"依", 1}, {"死", 4}, {"铃", 0}, {"灵", 0},
+    {"撒", 3}, {"洒", 3}, {"沙", 3}, {"砂", 3}, {"纱", 3},
+    {"吧", 8}, {"巴", 8}, {"扒", 8}, {"石", 10}, {"实", 10},
 };
 static const word_t RING_WORDS[] = {
     {"脱靶", ARCHERY_SCORE_MISS}, {"拖靶", ARCHERY_SCORE_MISS},
@@ -21,7 +28,7 @@ static const word_t RING_WORDS[] = {
     {"内十", ARCHERY_SCORE_X}, {"叉儿", ARCHERY_SCORE_X},
     {"叉", ARCHERY_SCORE_X}, {"X", ARCHERY_SCORE_X}, {"x", ARCHERY_SCORE_X},
 };
-static const char *const CLASSIFIERS[] = {"根", "个", "支", "箭", "发", "只"};
+static const char *const CLASSIFIERS[] = {"根", "跟", "个", "支", "箭", "发", "只"};
 static const char *const ALL_PHRASES[] = {
     "全都是", "剩下的都是", "剩下都是", "余下都是", "全是", "都是", "全",
 };
@@ -60,7 +67,8 @@ static int find_word(const char *text, const word_t *table, size_t count) {
     return -1;
 }
 
-static bool tokenize(const char *text, token_t *tokens, size_t capacity, size_t *out_count) {
+static bool tokenize(const char *text, token_t *tokens, size_t capacity,
+                     uint8_t arrows, size_t *out_count) {
     size_t count = 0;
     const char *cursor = text;
     while (*cursor) {
@@ -130,6 +138,15 @@ static bool tokenize(const char *text, token_t *tokens, size_t capacity, size_t 
                     break;
                 }
             }
+            if ((value == 11 && arrows < 11) || (value == 12 && arrows < 12)) {
+                // 每组箭数放不下 11/12 时，"十一"是"十 + 一"的连读（如"俩十一九"）。
+                const uint8_t rest = (uint8_t)(value - 10u);
+                if (count + 1 < capacity) {
+                    tokens[count++] = (token_t){.kind = TOK_NUM, .value = 10};
+                    tokens[count++] = (token_t){.kind = TOK_NUM, .value = rest};
+                }
+                continue;
+            }
             bool has_class = false;
             for (size_t i = 0; i < sizeof(CLASSIFIERS) / sizeof(CLASSIFIERS[0]); i++) {
                 if (starts_with(cursor, CLASSIFIERS[i])) {
@@ -190,7 +207,7 @@ void archery_speech_parse(const char *text, uint8_t target, uint8_t arrows,
 
     token_t tokens[48];
     size_t token_count = 0;
-    tokenize(text, tokens, sizeof(tokens) / sizeof(tokens[0]), &token_count);
+    tokenize(text, tokens, sizeof(tokens) / sizeof(tokens[0]), arrows, &token_count);
 
     int pending_ring = -1;
     int pending_count = -1;
@@ -315,10 +332,9 @@ void archery_speech_parse(const char *text, uint8_t target, uint8_t arrows,
             out->error = ARCHERY_SPEECH_EXCESS;
             return;
         }
-    } else if (total != arrows) {
+    } else if (total < arrows) {
+        // 允许先报一部分：不足的箭数由设备继续补录。
         out->missing = (uint8_t)(arrows - total);
-        out->error = ARCHERY_SPEECH_MISMATCH;
-        return;
     }
     out->ok = true;
     out->error = ARCHERY_SPEECH_OK;

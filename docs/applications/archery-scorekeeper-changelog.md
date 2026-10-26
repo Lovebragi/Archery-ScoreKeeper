@@ -8,6 +8,23 @@ Release history for the archery scorekeeper application. The repository-wide
 [changelog](../CHANGELOG.md) tracks the AI Passport project itself; this file
 follows the application's firmware versions.
 
+## 1.3.4 — 2026-10-27
+
+### Changed
+
+- The status bar now shows network state with four dashes under the battery:
+  colour is the state (green connected, grey disconnected/provisioning) and the
+  number of lit dashes is the signal strength (four is strongest).
+- Provisioning no longer uses gold, so it cannot be mistaken for connected.
+
+### Added
+
+- Voice credential hints: the entry screen says "voice not configured" when no
+  APPID/token is set, and "voice credentials invalid" when the handshake returns
+  401/403.
+- Recognition logs now include the target id to help diagnose low rings on full
+  targets; host tests cover full-target rings 5 to 1.
+
 ## 1.3.3 — 2026-10-27
 
 ### Changed

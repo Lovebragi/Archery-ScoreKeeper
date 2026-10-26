@@ -86,7 +86,7 @@ static lv_obj_t *make_card(lv_obj_t *parent, archery_rect_t rect,
 // 顶部右侧电量：只有一个小电池壳 + 填充条；读数不可用时保持空心。
 static void add_battery(lv_obj_t *scr, int soc) {
     lv_obj_t *shell = lv_obj_create(scr);
-    lv_obj_set_pos(shell, 202, 8);
+    lv_obj_set_pos(shell, 202, 4);
     lv_obj_set_size(shell, 24, 11);
     lv_obj_set_style_radius(shell, 3, 0);
     lv_obj_set_style_bg_opa(shell, LV_OPA_TRANSP, 0);
@@ -100,7 +100,7 @@ static void add_battery(lv_obj_t *scr, int soc) {
     if (fill_w < 1) fill_w = 1;
     const uint32_t color = soc < 20 ? C_RED : (soc < 50 ? C_GOLD : C_GREEN);
     lv_obj_t *fill = lv_obj_create(scr);
-    lv_obj_set_pos(fill, 205, 11);
+    lv_obj_set_pos(fill, 205, 7);
     lv_obj_set_size(fill, fill_w, 5);
     lv_obj_set_style_radius(fill, 2, 0);
     lv_obj_set_style_bg_color(fill, lv_color_hex(color), 0);
@@ -110,7 +110,23 @@ static void add_battery(lv_obj_t *scr, int soc) {
     lv_obj_remove_flag(fill, LV_OBJ_FLAG_SCROLLABLE);
 }
 
-// 顶部状态栏：电池左侧显示当前时间（时:分）与网络状态。
+// 电池下方四段短横线：点亮段数表示 Wi-Fi 信号，颜色表示网络状态。
+static void add_signal_bars(lv_obj_t *scr, uint32_t color, uint8_t bars) {
+    for (uint8_t i = 0; i < 4; i++) {
+        lv_obj_t *bar = lv_obj_create(scr);
+        lv_obj_set_pos(bar, 202 + i * 6, 17);
+        lv_obj_set_size(bar, 5, 3);
+        lv_obj_set_style_radius(bar, 1, 0);
+        lv_obj_set_style_bg_color(bar, lv_color_hex(color), 0);
+        lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(bar, 0, 0);
+        lv_obj_set_style_pad_all(bar, 0, 0);
+        lv_obj_remove_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
+        if (bars > 0 && i >= bars) lv_obj_add_flag(bar, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+// 顶部状态栏：左侧时间；电池与其下方四段横线表示电量、网络状态与信号。
 static void add_status_bar(lv_obj_t *scr, const archery_flow_t *flow,
                            const archery_wifi_view_t *view) {
     char time_text[8] = "--:--";
@@ -123,24 +139,19 @@ static void add_status_bar(lv_obj_t *scr, const archery_flow_t *flow,
     lv_obj_t *clock = make_label(scr, time_text, ARCHERY_FONT_BODY, C_MUTED);
     lv_obj_align(clock, LV_ALIGN_TOP_RIGHT, -42, 4);
 
-    // 网络状态用小圆点表示：绿=已联网，金=配网中，灰=未联网。
+    // 绿=已联网，金=配网中，灰=未联网；连上后圆弧数量表示信号强度。
     uint32_t net_color = C_MUTED;
+    uint8_t bars = 4;
     if (view) {
         if (view->state == ARCHERY_WIFI_AP_READY) {
-            net_color = C_GOLD;
+            net_color = C_MUTED;
         } else if (view->sta_connected) {
             net_color = C_GREEN;
+            const int8_t rssi = view->sta_rssi;
+            bars = rssi >= -55 ? 4 : (rssi >= -65 ? 3 : (rssi >= -75 ? 2 : 1));
         }
     }
-    lv_obj_t *dot = lv_obj_create(scr);
-    lv_obj_set_pos(dot, 152, 12);
-    lv_obj_set_size(dot, 5, 5);
-    lv_obj_set_style_radius(dot, 4, 0);
-    lv_obj_set_style_bg_color(dot, lv_color_hex(net_color), 0);
-    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(dot, 0, 0);
-    lv_obj_set_style_pad_all(dot, 0, 0);
-    lv_obj_remove_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+    add_signal_bars(scr, net_color, bars);
 }
 
 static void add_title(lv_obj_t *scr, const char *text) {

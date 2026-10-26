@@ -19,6 +19,9 @@ static const char *TAG = "ws_client";
 
 static esp_tls_t *s_tls;
 static uint8_t s_frame[FRAME_BUF];
+static int s_last_status;
+
+int archery_ws_last_status(void) { return s_last_status; }
 
 static bool write_all(const void *data, size_t length) {
     const uint8_t *ptr = (const uint8_t *)data;
@@ -190,6 +193,7 @@ bool archery_ws_connected(void) { return s_tls != NULL; }
 
 bool archery_ws_open(const char *appid, const char *token) {
     archery_ws_close();
+    s_last_status = 0;
     esp_tls_cfg_t cfg = {
         .crt_bundle_attach = esp_crt_bundle_attach,
         .timeout_ms = 15000,
@@ -233,6 +237,8 @@ bool archery_ws_open(const char *appid, const char *token) {
         if (strstr(response, "\r\n\r\n") || strstr(response, "\n\n")) break;
     }
     if (!strstr(response, "101")) {
+        int code = 0;
+        if (sscanf(response, "HTTP/1.%*d %d", &code) == 1) s_last_status = code;
         ESP_LOGE(TAG, "handshake failed: %.40s", response);
         archery_ws_close();
         return false;

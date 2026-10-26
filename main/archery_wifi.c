@@ -779,6 +779,11 @@ void archery_wifi_fill_view(archery_wifi_view_t *view) {
     if (!view) return;
     *view = s_view;
     view->sta_connected = s_connected;
+    view->sta_rssi = -127;
+    if (s_connected) {
+        wifi_ap_record_t ap;
+        if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) view->sta_rssi = ap.rssi;
+    }
     strncpy(view->ip, s_ip, sizeof(view->ip) - 1);
     view->ip[sizeof(view->ip) - 1] = '\0';
 }

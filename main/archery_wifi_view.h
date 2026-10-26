@@ -30,6 +30,7 @@ typedef struct {
     char ssid[ARCHERY_WIFI_AP_MAX][ARCHERY_WIFI_SSID_MAX];
     int8_t rssi[ARCHERY_WIFI_AP_MAX];
     bool secure[ARCHERY_WIFI_AP_MAX];
+    int8_t sta_rssi;    // 已连接时的信号强度（dBm），未连接为 -127
     char ip[16];
     char message[64];
 } archery_wifi_view_t;

@@ -158,6 +158,26 @@ static void test_eleven_split(void) {
     }
 }
 
+static void test_full_target_rings(void) {
+    archery_speech_result_t result;
+    archery_speech_parse("五环一根四环一根三环一根二环一根一环一根",
+                         ARCHERY_TARGET_FULL_40, 5, &result);
+    assert(result.ok);
+    assert(result.count == 5);
+    for (uint8_t i = 0; i < 5; i++) {
+        assert(result.items[i].ring == 5 - i);
+        assert(result.items[i].count == 1);
+    }
+
+    const uint8_t ring5[] = {5};
+    const uint8_t count3[] = {3};
+    const uint8_t count1[] = {1};
+    const uint8_t ring1[] = {1};
+    expect_ok("五环三根", 3, ARCHERY_TARGET_FULL_40, ring5, count3, 1);
+    expect_ok("一根五环", 1, ARCHERY_TARGET_FULL_40, ring5, count1, 1);
+    expect_ok("一环一根", 1, ARCHERY_TARGET_FULL_40, ring1, count1, 1);
+}
+
 static void test_failures(void) {
     expect_error("十环", 6, ARCHERY_TARGET_HALF_40, ARCHERY_SPEECH_INCOMPLETE);
     expect_error("十环", 6, ARCHERY_TARGET_HALF_40, ARCHERY_SPEECH_INCOMPLETE);
@@ -176,6 +196,7 @@ int main(void) {
     test_all_phrases();
     test_erhua_and_homophones();
     test_partial();
+    test_full_target_rings();
     test_eleven_split();
     test_failures();
     puts("archery speech parser tests: PASS");

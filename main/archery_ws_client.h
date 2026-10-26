@@ -16,3 +16,6 @@ bool archery_ws_read(char *text, size_t capacity);
 
 void archery_ws_close(void);
 bool archery_ws_connected(void);
+
+// 最近一次打开失败时的 HTTP 状态码（401/403 表示凭据无效），0 表示未知。
+int archery_ws_last_status(void);

@@ -297,10 +297,15 @@ static void play_tone(uint16_t hz, uint16_t ms, int repeat, uint16_t gap_ms) {
 }
 
 // 直连豆包流式识别：录完一段后解析成环值条目。
+static const char *open_failure_status(void) {
+    const int code = archery_ws_last_status();
+    return (code == 401 || code == 403) ? "语音凭据无效，请重设" : "连不上豆包";
+}
+
 static void run_ws_session(void) {
     if (!archery_ws_connected()) {
         if (!archery_ws_open(s_appid, s_token)) {
-            archery_voice_set_status("连不上豆包");
+            archery_voice_set_status(open_failure_status());
             play_tone(600, 150, 2, 100);
             s_result_ready = true;
             return;
@@ -314,7 +319,7 @@ static void run_ws_session(void) {
     if (!archery_ws_send_audio(probe, 160, false)) {
         archery_ws_close();
         if (!archery_ws_open(s_appid, s_token)) {
-            archery_voice_set_status("连不上豆包");
+            archery_voice_set_status(open_failure_status());
             play_tone(600, 150, 2, 100);
             s_result_ready = true;
             return;
@@ -345,7 +350,7 @@ static void run_ws_session(void) {
 
     archery_speech_result_t parsed;
     archery_speech_parse(latest, s_target, s_arrows, &parsed);
-    ESP_LOGI(TAG, "asr=%s ok=%d", latest, (int)parsed.ok);
+    ESP_LOGI(TAG, "asr=%s target=%u ok=%d", latest, (unsigned)s_target, (int)parsed.ok);
     memset(&s_result, 0, sizeof(s_result));
     if (parsed.ok) {
         s_result.ok = true;
@@ -473,8 +478,11 @@ esp_err_t archery_voice_init(void) {
         s_start_sem = NULL;
         return ESP_ERR_NO_MEM;
     }
-    archery_voice_set_status(archery_voice_enabled() ? "长按上键说话" : "语音未配置");
-    ESP_LOGI(TAG, "voice ready, url=%s", s_url[0] ? s_url : "(none)");
+    archery_voice_set_status((s_appid[0] && s_token[0]) || s_url[0]
+                                 ? "长按上键说话"
+                                 : "语音未配置");
+    ESP_LOGI(TAG, "voice ready, url=%s creds=%d", s_url[0] ? s_url : "(none)",
+             (s_appid[0] && s_token[0]) ? 1 : 0);
     return ESP_OK;
 }
 

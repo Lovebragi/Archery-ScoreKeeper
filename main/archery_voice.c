@@ -7,6 +7,8 @@
 
 #include "bsp_audio.h"
 #include "archery_score.h"
+#include "archery_speech.h"
+#include "archery_ws_client.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -35,7 +37,10 @@ typedef struct {
 static char s_url[VOICE_URL_MAX];
 static char s_status[40] = "长按上键说话";
 static char s_target_name[8] = "half";
+static uint8_t s_target = 0;
 static uint8_t s_arrows = 6;
+static char s_appid[32];
+static char s_token[96];
 static voice_endpoint_t s_endpoint;
 static SemaphoreHandle_t s_start_sem;
 static TaskHandle_t s_task;
@@ -115,6 +120,7 @@ void archery_voice_set_status(const char *text) {
 }
 
 void archery_voice_set_context(uint8_t target, uint8_t arrows) {
+    s_target = target;
     s_arrows = arrows ? arrows : 6;
     switch (target) {
     case ARCHERY_TARGET_FULL_40:
@@ -126,6 +132,41 @@ void archery_voice_set_context(uint8_t target, uint8_t arrows) {
         strcpy(s_target_name, "half");
         break;
     }
+}
+
+uint8_t archery_voice_context_target(void) { return s_target; }
+uint8_t archery_voice_context_arrows(void) { return s_arrows; }
+const char *archery_voice_appid(void) { return s_appid; }
+const char *archery_voice_token(void) { return s_token; }
+bool archery_voice_has_credentials(void) { return s_appid[0] && s_token[0]; }
+
+esp_err_t archery_voice_save_credentials(const char *appid, const char *token) {
+    if (!appid || !token) return ESP_ERR_INVALID_ARG;
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(VOICE_NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) return err;
+    err = nvs_set_str(handle, "appid", appid);
+    if (err == ESP_OK) err = nvs_set_str(handle, "token", token);
+    if (err == ESP_OK) err = nvs_commit(handle);
+    nvs_close(handle);
+    if (err == ESP_OK) {
+        strncpy(s_appid, appid, sizeof(s_appid) - 1);
+        strncpy(s_token, token, sizeof(s_token) - 1);
+        s_appid[sizeof(s_appid) - 1] = '\0';
+        s_token[sizeof(s_token) - 1] = '\0';
+        archery_voice_set_status("凭据已保存");
+    }
+    return err;
+}
+
+static void load_credentials(void) {
+    nvs_handle_t handle;
+    if (nvs_open(VOICE_NVS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) return;
+    size_t length = sizeof(s_appid);
+    if (nvs_get_str(handle, "appid", s_appid, &length) != ESP_OK) s_appid[0] = '\0';
+    length = sizeof(s_token);
+    if (nvs_get_str(handle, "token", s_token, &length) != ESP_OK) s_token[0] = '\0';
+    nvs_close(handle);
 }
 
 bool archery_voice_take_result(archery_voice_result_t *out) {
@@ -232,6 +273,7 @@ static void parse_result(const char *json) {
 }
 
 static void play_tone(uint16_t hz, uint16_t ms, int repeat, uint16_t gap_ms) {
+    bsp_audio_set_volume(70);
     int16_t buffer[320];
     const int samples = (int)(16000 / hz / 2);
     for (int n = 0; n < repeat; n++) {
@@ -251,6 +293,62 @@ static void play_tone(uint16_t hz, uint16_t ms, int repeat, uint16_t gap_ms) {
     }
 }
 
+// 直连豆包流式识别：录完一段后解析成环值条目。
+static void run_ws_session(void) {
+    if (!archery_ws_open(s_appid, s_token)) {
+        archery_voice_set_status("连不上豆包");
+        play_tone(600, 150, 2, 100);
+        s_result_ready = true;
+        return;
+    }
+    archery_voice_set_status("录音中，松手结束");
+    play_tone(1000, 80, 1, 0);
+
+    uint8_t pcm[640];
+    const int64_t started = esp_timer_get_time();
+    while (!s_stop_requested && (esp_timer_get_time() - started) / 1000 < VOICE_MAX_MS) {
+        if (bsp_audio_read(pcm, sizeof(pcm)) != ESP_OK) break;
+        if (!archery_ws_send_audio((const int16_t *)pcm, sizeof(pcm) / 2, false)) break;
+    }
+    int16_t tail[160] = {0};
+    (void)archery_ws_send_audio(tail, 160, true);
+
+    char text[256] = {0};
+    char latest[256] = {0};
+    for (int i = 0; i < 40; i++) {
+        const bool last = archery_ws_read(text, sizeof(text));
+        if (text[0]) {
+            strncpy(latest, text, sizeof(latest) - 1);
+            latest[sizeof(latest) - 1] = '\0';
+        }
+        if (last) break;
+        if (!archery_ws_connected()) break;
+    }
+    archery_ws_close();
+
+    archery_speech_result_t parsed;
+    archery_speech_parse(latest, s_target, s_arrows, &parsed);
+    memset(&s_result, 0, sizeof(s_result));
+    if (parsed.ok) {
+        s_result.ok = true;
+        s_result.count = parsed.count;
+        for (uint8_t i = 0; i < parsed.count; i++) {
+            s_result.items[i].ring = parsed.items[i].ring;
+            s_result.items[i].count = parsed.items[i].count;
+            s_result.items[i].all = parsed.items[i].all;
+        }
+        archery_voice_set_status("识别完成");
+        play_tone(1000, 80, 1, 0);
+    } else {
+        strncpy(s_result.error, "parse", sizeof(s_result.error) - 1);
+        archery_voice_set_status(parsed.error == ARCHERY_SPEECH_MISMATCH
+                                     ? "数量对不上，请重说"
+                                     : "没听清，请重说");
+        play_tone(600, 150, 2, 100);
+    }
+    s_result_ready = true;
+}
+
 static void run_session(void) {
     s_active = true;
     s_stop_requested = false;
@@ -260,6 +358,12 @@ static void run_session(void) {
     if (bsp_audio_init() != ESP_OK || bsp_audio_set_format(16000, 16, 1) != ESP_OK) {
         archery_voice_set_status("麦克风初始化失败");
         play_tone(600, 150, 2, 100);
+        s_active = false;
+        return;
+    }
+
+    if (archery_voice_has_credentials()) {
+        run_ws_session();
         s_active = false;
         return;
     }
@@ -342,6 +446,7 @@ esp_err_t archery_voice_init(void) {
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "语音地址读取失败: %s", esp_err_to_name(err));
     }
+    load_credentials();
     s_start_sem = xSemaphoreCreateBinary();
     if (!s_start_sem) return ESP_ERR_NO_MEM;
     if (xTaskCreate(voice_task, "voice", 10240, NULL, 4, &s_task) != pdPASS) {

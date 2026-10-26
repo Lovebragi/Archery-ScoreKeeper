@@ -292,10 +292,22 @@ static const char *PROV_HTML =
     "<input id=voice placeholder='http://192.168.1.10:8765/asr' autocapitalize=none"
     " autocorrect=off spellcheck=false autocomplete=off>"
     "<button onclick=saveVoice()>保存语音地址</button>"
+    "<div class=muted style='margin-top:18px'>豆包直连凭据（AppID + Access Token，可留空）</div>"
+    "<input id=appid placeholder='AppID' autocapitalize=none autocorrect=off"
+    " spellcheck=false autocomplete=off>"
+    "<input id=token type=password placeholder='Access Token' autocapitalize=none"
+    " autocorrect=off spellcheck=false autocomplete=off>"
+    "<button onclick=saveCreds()>保存直连凭据</button>"
     "<button onclick=go()>连接</button><div id=msg class=muted style='margin-top:12px'></div><script>"
     "let ssid=document.getElementById('ssid'),pass=document.getElementById('pass'),"
-    "voice=document.getElementById('voice'),msg=document.getElementById('msg');"
+    "voice=document.getElementById('voice'),appid=document.getElementById('appid'),"
+    "token=document.getElementById('token'),msg=document.getElementById('msg');"
     "fetch('/voice').then(r=>r.text()).then(t=>{voice.value=t});"
+    "fetch('/voice-creds').then(r=>r.text()).then(t=>{appid.value=t});"
+    "function saveCreds(){fetch('/voice-creds',{method:'POST',"
+    "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+    "body:'appid='+encodeURIComponent(appid.value)+'&token='+encodeURIComponent(token.value)})"
+    ".then(r=>r.text()).then(t=>{msg.textContent=t;token.value=''})}"
     "function saveVoice(){fetch('/voice-url',{method:'POST',"
     "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
     "body:'url='+encodeURIComponent(voice.value)}).then(r=>r.text())"
@@ -451,6 +463,49 @@ static esp_err_t http_voice_set(httpd_req_t *req) {
     return httpd_resp_sendstr(req, url[0] ? "已保存语音地址" : "语音地址已清空");
 }
 
+static esp_err_t http_voice_creds_get(httpd_req_t *req) {
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    return httpd_resp_sendstr(req, archery_voice_appid());
+}
+
+static esp_err_t http_voice_creds_set(httpd_req_t *req) {
+    char body[384];
+    const int received = httpd_req_recv(req, body, sizeof(body) - 1);
+    if (received <= 0) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "no body");
+    body[received] = '\0';
+
+    char appid[32] = {0};
+    char token[96] = {0};
+    char *a = strstr(body, "appid=");
+    char *t = strstr(body, "token=");
+    if (a) {
+        a += 6;
+        char *end = strchr(a, '&');
+        if (end) *end = '\0';
+        strncpy(appid, a, sizeof(appid) - 1);
+        url_decode(appid);
+    }
+    if (t) {
+        t += 6;
+        char *end = strchr(t, '&');
+        if (end) *end = '\0';
+        strncpy(token, t, sizeof(token) - 1);
+        url_decode(token);
+    }
+    if (token[0] == '\0') {
+        strncpy(token, archery_voice_token(), sizeof(token) - 1);
+    }
+
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    if (appid[0] == '\0' || token[0] == '\0') {
+        return httpd_resp_sendstr(req, "需要 AppID 和 Access Token");
+    }
+    if (archery_voice_save_credentials(appid, token) != ESP_OK) {
+        return httpd_resp_sendstr(req, "保存失败");
+    }
+    return httpd_resp_sendstr(req, "已保存直连凭据");
+}
+
 static esp_err_t http_redirect(httpd_req_t *req) {
     (void)req;
     httpd_resp_set_status(req, "302 Found");
@@ -512,6 +567,10 @@ static void start_httpd(void) {
                                        .handler = http_voice_get};
     const httpd_uri_t voice_set_uri = {.uri = "/voice-url", .method = HTTP_POST,
                                        .handler = http_voice_set};
+    const httpd_uri_t creds_get_uri = {.uri = "/voice-creds", .method = HTTP_GET,
+                                       .handler = http_voice_creds_get};
+    const httpd_uri_t creds_set_uri = {.uri = "/voice-creds", .method = HTTP_POST,
+                                       .handler = http_voice_creds_set};
     httpd_register_uri_handler(s_httpd, &index_uri);
     httpd_register_uri_handler(s_httpd, &scan_uri);
     httpd_register_uri_handler(s_httpd, &status_uri);
@@ -520,6 +579,8 @@ static void start_httpd(void) {
     httpd_register_uri_handler(s_httpd, &csv_uri);
     httpd_register_uri_handler(s_httpd, &voice_get_uri);
     httpd_register_uri_handler(s_httpd, &voice_set_uri);
+    httpd_register_uri_handler(s_httpd, &creds_get_uri);
+    httpd_register_uri_handler(s_httpd, &creds_set_uri);
     // iOS/Android 的联网探测：跳转到配网页，手机才会自动弹出登录页。
     static const char *probe_paths[] = {"/hotspot-detect.html", "/generate_204",
                                         "/connecttest.txt", "/ncsi.txt"};

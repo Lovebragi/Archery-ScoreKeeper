@@ -37,6 +37,14 @@ bool archery_voice_active(void);
 
 // 本次识别使用的靶型与箭数（代理据此解析与校验）。
 void archery_voice_set_context(uint8_t target, uint8_t arrows);
+uint8_t archery_voice_context_target(void);
+uint8_t archery_voice_context_arrows(void);
+
+// 直连豆包流式识别所需的凭据（AppID + Access Token），存 NVS。
+esp_err_t archery_voice_save_credentials(const char *appid, const char *token);
+const char *archery_voice_appid(void);
+const char *archery_voice_token(void);
+bool archery_voice_has_credentials(void);
 
 // 识别完成的结果（消费一次）。
 bool archery_voice_take_result(archery_voice_result_t *out);

@@ -6,6 +6,7 @@ idf_component_register(
          "archery_history.c"
          "archery_layout.c"
          "archery_score.c"
+         "archery_speech.c"
          "archery_session.c"
          "archery_settings.c"
          "archery_store.c"
@@ -13,6 +14,7 @@ idf_component_register(
          "archery_qr.c"
          "archery_ui.c"
          "archery_voice.c"
+         "archery_ws_client.c"
          "archery_fonts.c"
          "demo_navigation.c"
          "ui_pixel.c"
@@ -26,7 +28,7 @@ idf_component_register(
          "demo_ble.c"
          "demo_low_power.c"
     INCLUDE_DIRS "."
-    REQUIRES bsp bt esp_event esp_hw_support esp_http_server esp_netif esp_timer esp_wifi lwip nvs_flash
+    REQUIRES bsp bt esp_event esp_hw_support esp_http_server esp_netif esp_timer esp-tls esp_wifi lwip mbedtls nvs_flash
 )
 
 # 应用专用的中文子集字体（Noto Sans SC，OFL-1.1）。生成命令与字符清单见

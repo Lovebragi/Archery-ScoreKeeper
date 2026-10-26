@@ -12,3 +12,10 @@ __pycache__/
 /.agents/skills/passport-build
 /.agents/skills/passport-device-test
 /.agents/skills/passport-debug
+
+# Local experiment credentials (never commit).
+main/voice_secret.h
+voice-ws.defaults
+build-voice/
+build-ws/
+build-ws2/

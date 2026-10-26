@@ -553,7 +553,7 @@ static void worker_task(void *argument) {
                     handle_key(message.key);
                 }
             } else if (message.type == APP_MSG_VOICE_START) {
-                if (s_flow.page == ARCHERY_PAGE_ENTRY && archery_voice_enabled() &&
+                if (s_flow.page == ARCHERY_PAGE_ENTRY && (archery_voice_enabled() || archery_voice_has_credentials()) &&
                     !archery_voice_active()) {
                     const bool faces = archery_flow_target_has_faces(s_flow.session.target);
                     const uint8_t face = faces ? s_flow.entry_face : 0;

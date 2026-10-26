@@ -239,14 +239,14 @@ static void render_home(lv_obj_t *scr, const archery_flow_t *flow) {
     static const char *items[ARCHERY_HOME_ITEMS] = {"开始训练", "历史记录", "日期时间",
                                                     "设置", "联网"};
     for (uint8_t i = 0; i < ARCHERY_HOME_ITEMS; i++) {
-        const archery_rect_t rect = {32, (int16_t)(168 + i * 24), 176, 22};
+        const archery_rect_t rect = {32, (int16_t)(182 + i * 22), 176, 22};
         const bool selected = flow->home_select == i;
         lv_obj_t *card = make_card(scr, rect, selected, false);
         lv_obj_t *label = make_label(card, items[i], ARCHERY_FONT_BODY,
                                      selected ? C_GOLD : C_TEXT);
         lv_obj_center(label);
     }
-    add_hint(scr, "上/下 选择 · 确定 进入", 294);
+    add_hint(scr, "上/下 选择 · 确定 进入", 300);
 }
 
 static void render_setup(lv_obj_t *scr, const archery_flow_t *flow) {

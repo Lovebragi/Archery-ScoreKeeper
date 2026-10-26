@@ -843,16 +843,16 @@ static void render_clock(lv_obj_t *scr, const archery_flow_t *flow) {
 static void render_confirm(lv_obj_t *scr, const archery_flow_t *flow,
                            const archery_history_t *history, bool abort_page) {
     if (abort_page) {
-        centered_label(scr, "放弃本次训练", ARCHERY_FONT_TITLE, C_RED, 8);
-        centered_label(scr, "本次已录入的成绩不会保存", ARCHERY_FONT_BODY, C_TEXT, 84);
-        centered_label(scr, "确定要放弃吗？", ARCHERY_FONT_BODY, C_MUTED, 110);
+        centered_label(scr, "放弃本次训练", ARCHERY_FONT_TITLE, C_RED, 52);
+        centered_label(scr, "本次已录入的成绩不会保存", ARCHERY_FONT_BODY, C_TEXT, 112);
+        centered_label(scr, "确定要放弃吗？", ARCHERY_FONT_BODY, C_MUTED, 138);
     } else {
-        centered_label(scr, "清空全部记录", ARCHERY_FONT_TITLE, C_RED, 8);
+        centered_label(scr, "清空全部记录", ARCHERY_FONT_TITLE, C_RED, 52);
         char line[48];
         snprintf(line, sizeof(line), "将删除 %u 条训练记录",
                  (unsigned)history->meta.count);
-        centered_label(scr, line, ARCHERY_FONT_BODY, C_TEXT, 84);
-        centered_label(scr, "清空后无法恢复", ARCHERY_FONT_BODY, C_MUTED, 110);
+        centered_label(scr, line, ARCHERY_FONT_BODY, C_TEXT, 112);
+        centered_label(scr, "清空后无法恢复", ARCHERY_FONT_BODY, C_MUTED, 138);
     }
 
     const char *options[2];
@@ -865,7 +865,7 @@ static void render_confirm(lv_obj_t *scr, const archery_flow_t *flow,
     }
     for (int i = 0; i < 2; i++) {
         const bool selected = flow->confirm_yes == (i == 1);
-        const archery_rect_t rect = {30, 152 + i * 52, 180, 40};
+        const archery_rect_t rect = {30, (int16_t)(172 + i * 52), 180, 40};
         lv_obj_t *card = make_card(scr, rect, selected, i == 1);
         lv_obj_t *label = make_label(card, options[i], ARCHERY_FONT_BODY,
             i == 1 ? C_RED : (selected ? C_GOLD : C_TEXT));

@@ -8,6 +8,26 @@ Release history for the archery scorekeeper application. The repository-wide
 [changelog](../CHANGELOG.md) tracks the AI Passport project itself; this file
 follows the application's firmware versions.
 
+## 1.3.5 — 2026-10-28
+
+### Fixed
+
+- Wi-Fi is now stopped before light sleep and restarted with automatic reconnect
+  on wake. Keeping Wi-Fi connected while entering manual light sleep violates the
+  ESP-IDF requirement and could leave the device unable to wake after a long idle.
+- A manual "Disconnect" in the network menu is no longer undone by the automatic
+  reconnect; it stays disconnected until you connect again.
+
+### Changed
+
+- Status bar: when connected, four green dashes under the battery show signal
+  strength; when disconnected or provisioning, a single light-grey line replaces
+  the misleading four grey dashes.
+- Wi-Fi SSIDs use a bundled Chinese font, so Chinese network names no longer show
+  missing-glyph boxes.
+- The key that wakes the device is still swallowed until release, so it cannot
+  trigger an action.
+
 ## 1.3.4 — 2026-10-27
 
 ### Changed

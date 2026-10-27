@@ -79,6 +79,8 @@ static archery_key_t s_repeat_key;
 // 按键唤醒后，那颗键在整个启动期间还按着；在它松手前丢弃按键动作，
 // 避免把"唤醒键仍在按"误判成长按。
 static key_guard_t s_key_guard;
+static int64_t s_wake_click_until_us;
+static int64_t s_next_wifi_retry_us;
 // 墙上时钟：基准时间 + 单调计时器。设备没有 RTC 电池，断电后时间从上次保存
 // 的时刻继续；设置页可手动校准。
 static uint32_t s_clock_base;
@@ -418,10 +420,20 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t event, void *user) {
     // 先消费唤醒守卫再判断就绪：松开事件可能早于队列就绪到达，若在这里被
     // 提前返回丢掉，守卫会一直拦到兜底时限。
     const bool was_armed = s_key_guard.armed;
-    if (key_guard_consume(&s_key_guard, event == BSP_BTN_RELEASE, esp_timer_get_time())) {
+    const int64_t now = esp_timer_get_time();
+    if (key_guard_consume(&s_key_guard, event == BSP_BTN_RELEASE, now)) {
+        if (event == BSP_BTN_RELEASE) {
+            // 驱动可能先发 release、再补一个 click；把紧跟其后的 click 一并吞掉。
+            s_wake_click_until_us = now + 500000;
+        }
         if (was_armed && !s_key_guard.armed) {
             ESP_LOGI(TAG, "唤醒键已松手，按键恢复响应");
         }
+        return;
+    }
+    if ((event == BSP_BTN_CLICK || event == BSP_BTN_DOUBLE) &&
+        now < s_wake_click_until_us) {
+        s_wake_click_until_us = 0;
         return;
     }
     const archery_button_t physical = physical_button(btn);
@@ -505,6 +517,13 @@ static void light_sleep_now(void) {
     while (xQueueReceive(s_queue, &pending, 0) == pdTRUE) {
     }
 
+    // 手动浅睡前必须先停 Wi-Fi，否则属于 ESP-IDF 未定义行为。
+    if (archery_wifi_suspend_for_light_sleep() != ESP_OK) {
+        bsp_lvgl_unlock();
+        ESP_LOGW(TAG, "停止 Wi-Fi 失败，本次不休眠");
+        return;
+    }
+
     bsp_display_backlight(0);
     const esp_err_t display_err = bsp_display_set_power(false);
     esp_err_t wake_err = gpio_wakeup_enable((gpio_num_t)BSP_BTN_GPIO, GPIO_INTR_LOW_LEVEL);
@@ -517,6 +536,7 @@ static void light_sleep_now(void) {
         (void)gpio_wakeup_disable((gpio_num_t)BSP_BTN_GPIO);
         (void)bsp_display_set_power(true);
         bsp_display_backlight(s_flow.settings.brightness);
+        (void)archery_wifi_resume_after_light_sleep();
         if (suspend_err == ESP_OK) {
             (void)bsp_button_resume_after_light_sleep(on_key, NULL);
         }
@@ -527,7 +547,7 @@ static void light_sleep_now(void) {
         return;
     }
 
-    ESP_LOGI(TAG, "息屏浅睡，任意键唤醒");
+    ESP_LOGI(TAG, "息屏浅睡，低电平唤醒");
     const esp_err_t sleep_err = esp_light_sleep_start();
     const uint32_t causes = esp_sleep_get_wakeup_causes();
 
@@ -545,6 +565,9 @@ static void light_sleep_now(void) {
     }
     archery_ui_show(&s_flow, &s_history, s_battery_soc);
     bsp_lvgl_unlock();
+    // 先恢复 Wi-Fi 栈，再自动重连保存的网络。
+    (void)archery_wifi_resume_after_light_sleep();
+    (void)archery_wifi_reconnect();
 
     s_last_input_us = esp_timer_get_time();
     s_next_battery_us = 0;  // 醒来后立刻刷新电量
@@ -697,6 +720,12 @@ static void worker_task(void *argument) {
             // 每 5 分钟把时钟基准写一次 NVS；写入内容很小，磨损可忽略。
             clock_persist(false);
             s_next_clock_save_us = now + (int64_t)300 * 1000000;
+        }
+        // 录入页若发现 Wi-Fi 掉了（浅睡、路由器重启），自动重连，避免语音前还要手动连。
+        if (s_flow.page == ARCHERY_PAGE_ENTRY && !archery_wifi_connected() &&
+            now >= s_next_wifi_retry_us) {
+            (void)archery_wifi_reconnect();
+            s_next_wifi_retry_us = now + (int64_t)15 * 1000000;
         }
         const uint16_t off_seconds = s_flow.settings.off_seconds;
         if (off_seconds > 0 &&

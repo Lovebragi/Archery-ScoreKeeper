@@ -74,6 +74,8 @@ static bool load_credentials(char *ssid, size_t ssid_size, char *pass, size_t pa
 }
 
 static bool s_save_enabled = true;
+// 用户主动断开后不再自动重连；下次手动连接时恢复。
+static bool s_auto_reconnect = true;
 
 void archery_wifi_set_save_enabled(bool enabled) { s_save_enabled = enabled; }
 bool archery_wifi_save_enabled(void) { return s_save_enabled; }
@@ -185,6 +187,7 @@ esp_err_t archery_wifi_scan(void) {
 // ---------------------------------------------------------------- 连接
 esp_err_t archery_wifi_connect(const char *ssid, const char *password) {
     if (!s_inited || !ssid || !ssid[0]) return ESP_ERR_INVALID_ARG;
+    s_auto_reconnect = true;
     if (s_save_enabled) {
         save_credentials(ssid, password);
         archery_wifi_store_remember(ssid, password);
@@ -218,8 +221,39 @@ esp_err_t archery_wifi_connect_index(uint8_t index) {
     return archery_wifi_connect(s_view.ssid[index], "");
 }
 
+static bool s_suspended_for_sleep;
+
+// 手动浅睡前必须停 Wi-Fi（ESP-IDF 要求）；唤醒后再 start 并重连。
+esp_err_t archery_wifi_suspend_for_light_sleep(void) {
+    if (!s_inited || s_provisioning) return ESP_ERR_INVALID_STATE;
+    s_suspended_for_sleep = true;
+    s_connected = false;
+    s_ip[0] = '\0';
+    s_view.sta_connected = false;
+    s_view.ip[0] = '\0';
+    s_view.state = ARCHERY_WIFI_IDLE;
+    return esp_wifi_stop();
+}
+
+esp_err_t archery_wifi_resume_after_light_sleep(void) {
+    if (!s_suspended_for_sleep) return ESP_OK;
+    s_suspended_for_sleep = false;
+    return esp_wifi_start();
+}
+esp_err_t archery_wifi_reconnect(void) {
+    if (!s_inited || !s_auto_reconnect) return ESP_ERR_INVALID_STATE;
+    if (s_connected || s_view.state == ARCHERY_WIFI_CONNECTING) return ESP_OK;
+    char ssid[ARCHERY_WIFI_SSID_MAX];
+    char pass[65];
+    if (!load_credentials(ssid, sizeof(ssid), pass, sizeof(pass))) {
+        return ESP_ERR_NOT_FOUND;
+    }
+    return archery_wifi_connect(ssid, pass);
+}
+
 esp_err_t archery_wifi_disconnect(void) {
     if (!s_inited) return ESP_ERR_INVALID_STATE;
+    s_auto_reconnect = false;
     esp_wifi_disconnect();
     s_connected = false;
     s_ip[0] = '\0';

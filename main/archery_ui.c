@@ -32,6 +32,15 @@
 
 static lv_obj_t *s_screen;
 static const archery_wifi_view_t *s_wifi_view;
+
+// SSID 可能包含任意中文，用 LVGL 自带的 CJK 字体覆盖，避免缺字方块。
+static const lv_font_t *ssid_font(void) {
+#if LV_FONT_SOURCE_HAN_SANS_SC_16_CJK
+    return &lv_font_source_han_sans_sc_16_cjk;
+#else
+    return ARCHERY_FONT_BODY;
+#endif
+}
 static const char *s_voice_status;
 
 // ---------------------------------------------------------------------------
@@ -110,7 +119,7 @@ static void add_battery(lv_obj_t *scr, int soc) {
     lv_obj_remove_flag(fill, LV_OBJ_FLAG_SCROLLABLE);
 }
 
-// 电池下方四段短横线：点亮段数表示 Wi-Fi 信号，颜色表示网络状态。
+// 已联网时电池下方四段短横线，点亮段数表示信号强弱。
 static void add_signal_bars(lv_obj_t *scr, uint32_t color, uint8_t bars) {
     for (uint8_t i = 0; i < 4; i++) {
         lv_obj_t *bar = lv_obj_create(scr);
@@ -126,7 +135,20 @@ static void add_signal_bars(lv_obj_t *scr, uint32_t color, uint8_t bars) {
     }
 }
 
-// 顶部状态栏：左侧时间；电池与其下方四段横线表示电量、网络状态与信号。
+// 未联网时电池下方只画一条 1 px 的细红线。
+static void add_signal_line(lv_obj_t *scr, uint32_t color) {
+    lv_obj_t *line = lv_obj_create(scr);
+    lv_obj_set_pos(line, 202, 19);
+    lv_obj_set_size(line, 24, 1);
+    lv_obj_set_style_radius(line, 0, 0);
+    lv_obj_set_style_bg_color(line, lv_color_hex(color), 0);
+    lv_obj_set_style_bg_opa(line, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(line, 0, 0);
+    lv_obj_set_style_pad_all(line, 0, 0);
+    lv_obj_remove_flag(line, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+// 顶部状态栏：左侧时间；电池与下方图形表示电量与网络状态。
 static void add_status_bar(lv_obj_t *scr, const archery_flow_t *flow,
                            const archery_wifi_view_t *view) {
     char time_text[8] = "--:--";
@@ -139,19 +161,13 @@ static void add_status_bar(lv_obj_t *scr, const archery_flow_t *flow,
     lv_obj_t *clock = make_label(scr, time_text, ARCHERY_FONT_BODY, C_MUTED);
     lv_obj_align(clock, LV_ALIGN_TOP_RIGHT, -42, 4);
 
-    // 绿=已联网，金=配网中，灰=未联网；连上后圆弧数量表示信号强度。
-    uint32_t net_color = C_MUTED;
-    uint8_t bars = 4;
-    if (view) {
-        if (view->state == ARCHERY_WIFI_AP_READY) {
-            net_color = C_MUTED;
-        } else if (view->sta_connected) {
-            net_color = C_GREEN;
-            const int8_t rssi = view->sta_rssi;
-            bars = rssi >= -55 ? 4 : (rssi >= -65 ? 3 : (rssi >= -75 ? 2 : 1));
-        }
+    if (view && view->sta_connected) {
+        const int8_t rssi = view->sta_rssi;
+        const uint8_t bars = rssi >= -55 ? 4 : (rssi >= -65 ? 3 : (rssi >= -75 ? 2 : 1));
+        add_signal_bars(scr, C_GREEN, bars);
+    } else {
+        add_signal_line(scr, 0xB8B8B8u);
     }
-    add_signal_bars(scr, net_color, bars);
 }
 
 static void add_title(lv_obj_t *scr, const char *text) {
@@ -676,7 +692,7 @@ static void render_wifi(lv_obj_t *scr, const archery_flow_t *flow) {
                 lv_obj_center(label);
                 continue;
             }
-            lv_obj_t *name = make_label(card, view->ssid[index], ARCHERY_FONT_BODY,
+            lv_obj_t *name = make_label(card, view->ssid[index], ssid_font(),
                                         selected ? C_GOLD : C_TEXT);
             lv_obj_align(name, LV_ALIGN_LEFT_MID, 10, -8);
             char meta[24];
@@ -730,7 +746,7 @@ static void render_wifi_password(lv_obj_t *scr, const archery_flow_t *flow) {
     add_title(scr, "密码");
     const archery_wifi_view_t *view = s_wifi_view;
     if (view && flow->wifi_target < view->ap_count) {
-        centered_label(scr, view->ssid[flow->wifi_target], ARCHERY_FONT_BODY, C_GOLD, 38);
+        centered_label(scr, view->ssid[flow->wifi_target], ssid_font(), C_GOLD, 38);
     }
 
     char shown[24];

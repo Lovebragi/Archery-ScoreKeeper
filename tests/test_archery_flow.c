@@ -753,6 +753,23 @@ static void test_wifi_password(void) {
     assert(flow.wifi_mode == 1);
 }
 
+static void test_diag_pages(void) {
+    archery_flow_t flow;
+    archery_flow_init(&flow);
+    press(&flow, ARCHERY_KEY_OK_LONG);
+    assert(flow.page == ARCHERY_PAGE_DIAG);
+    assert(flow.diag_row == 0);
+    press(&flow, ARCHERY_KEY_DOWN);
+    press(&flow, ARCHERY_KEY_DOWN);
+    assert(flow.diag_row == 2);
+    press(&flow, ARCHERY_KEY_OK);
+    assert(flow.page == ARCHERY_PAGE_DIAG_LOG);
+    press(&flow, ARCHERY_KEY_OK);
+    assert(flow.page == ARCHERY_PAGE_DIAG);
+    press(&flow, ARCHERY_KEY_OK_LONG);
+    assert(flow.page == ARCHERY_PAGE_HOME);
+}
+
 int main(void) {
     test_home_and_setup();
     test_ring_count_entry();
@@ -767,6 +784,7 @@ int main(void) {
     test_history_pages();
     test_wifi_page();
     test_wifi_password();
+    test_diag_pages();
     puts("archery flow state-machine tests: PASS");
     return 0;
 }

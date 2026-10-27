@@ -2,8 +2,12 @@
 #include "archery_fonts.h"
 
 #include "esp_log.h"
+#include <string.h>
 
 static const char *TAG = "archery_font";
+static bool s_audit_enabled = true;
+
+void archery_font_audit_set_enabled(bool enabled) { s_audit_enabled = enabled; }
 
 // 最小 UTF-8 解码：只需要码点，不做合法性归一化。非法字节按 U+FFFD 跳过。
 static uint32_t next_codepoint(const char **cursor) {
@@ -36,7 +40,7 @@ static uint32_t next_codepoint(const char **cursor) {
 }
 
 void archery_font_audit(const lv_font_t *font, const char *text) {
-    if (!font || !text) return;
+    if (!s_audit_enabled || !font || !text) return;
     const char *p = text;
     while (*p) {
         const uint32_t cp = next_codepoint(&p);
@@ -46,4 +50,28 @@ void archery_font_audit(const lv_font_t *font, const char *text) {
             ESP_LOGW(TAG, "字库缺字形 U+%04lX", (unsigned long)cp);
         }
     }
+}
+
+void archery_font_filter(const lv_font_t *font, const char *text, char *out,
+                         size_t capacity) {
+    if (!out || capacity == 0) return;
+    size_t used = 0;
+    const char *p = text;
+    while (p && *p && used + 1 < capacity) {
+        const char *start = p;
+        const uint32_t cp = next_codepoint(&p);
+        lv_font_glyph_dsc_t dsc;
+        const bool covered = font && lv_font_get_glyph_dsc(font, &dsc, cp, 0) &&
+                             !dsc.is_placeholder;
+        if (covered) {
+            const size_t length = (size_t)(p - start);
+            if (used + length < capacity) {
+                memcpy(out + used, start, length);
+                used += length;
+            }
+        } else if (used + 1 < capacity) {
+            out[used++] = '?';
+        }
+    }
+    out[used] = '\0';
 }

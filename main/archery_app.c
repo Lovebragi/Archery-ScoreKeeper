@@ -9,6 +9,7 @@
 #include "archery_app.h"
 
 #include "archery_flow.h"
+#include "archery_logbuf.h"
 #include "archery_history.h"
 #include "archery_score.h"
 #include "archery_settings.h"
@@ -48,6 +49,7 @@ typedef enum {
     APP_MSG_VOICE_START,
     APP_MSG_VOICE_STOP,
     APP_MSG_HISTORY_FILTER,
+    APP_MSG_DIAG,
 } app_msg_type_t;
 
 typedef struct {
@@ -81,6 +83,7 @@ static archery_key_t s_repeat_key;
 static key_guard_t s_key_guard;
 static int64_t s_wake_click_until_us;
 static int64_t s_next_wifi_retry_us;
+static esp_timer_handle_t s_diag_timer;
 // 墙上时钟：基准时间 + 单调计时器。设备没有 RTC 电池，断电后时间从上次保存
 // 的时刻继续；设置页可手动校准。
 static uint32_t s_clock_base;
@@ -143,6 +146,7 @@ static void sync_wifi_flow(void) {
 }
 
 static void redraw(void) {
+    archery_flow_set_log_count(&s_flow, (uint8_t)archery_logbuf_count());
     archery_flow_set_clock(&s_flow, clock_now(), s_clock_set);
     sync_wifi_flow();
     archery_ui_set_wifi_view(&s_wifi_view);
@@ -391,7 +395,8 @@ static archery_button_t physical_button(bsp_btn_t btn) {
 
 static void repeat_timer_cb(void *arg) {
     (void)arg;
-    if (!s_repeat_active || s_flow.page != ARCHERY_PAGE_HISTORY) {
+    if (!s_repeat_active || (s_flow.page != ARCHERY_PAGE_HISTORY &&
+                             s_flow.page != ARCHERY_PAGE_DIAG_LOG)) {
         if (s_repeat_timer) (void)esp_timer_stop(s_repeat_timer);
         s_repeat_active = false;
         return;
@@ -404,6 +409,13 @@ static void repeat_timer_cb(void *arg) {
     // 第一次触发时从 400 ms 延时切到 60 ms 周期。
     (void)esp_timer_stop(s_repeat_timer);
     (void)esp_timer_start_periodic(s_repeat_timer, 60000);
+}
+
+static void diag_timer_cb(void *arg) {
+    (void)arg;
+    if (!s_queue) return;
+    const app_message_t message = {.type = APP_MSG_DIAG};
+    (void)xQueueSend(s_queue, &message, 0);
 }
 
 static void ptt_timer_cb(void *arg) {
@@ -448,18 +460,25 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t event, void *user) {
             (void)esp_timer_start_once(s_ptt_timer, 200000);
         }
         if ((pressed == ARCHERY_KEY_UP || pressed == ARCHERY_KEY_DOWN) &&
-            s_flow.page == ARCHERY_PAGE_HISTORY && s_repeat_timer) {
+            (s_flow.page == ARCHERY_PAGE_HISTORY || s_flow.page == ARCHERY_PAGE_DIAG_LOG) &&
+            s_repeat_timer) {
             s_repeat_key = pressed;
             s_repeat_active = true;
             s_repeat_used = false;
             (void)esp_timer_stop(s_repeat_timer);
             (void)esp_timer_start_once(s_repeat_timer, 400000);
         }
+        if (pressed == ARCHERY_KEY_OK && s_flow.page == ARCHERY_PAGE_HOME &&
+            s_diag_timer) {
+            (void)esp_timer_stop(s_diag_timer);
+            (void)esp_timer_start_once(s_diag_timer, 3000000);
+        }
         return;
     }
     if (event == BSP_BTN_RELEASE) {
         if (s_ptt_timer) (void)esp_timer_stop(s_ptt_timer);
         if (s_repeat_timer) (void)esp_timer_stop(s_repeat_timer);
+        if (s_diag_timer) (void)esp_timer_stop(s_diag_timer);
         s_repeat_active = false;
         if (archery_voice_active()) {
             const app_message_t stop = {.type = APP_MSG_VOICE_STOP};
@@ -471,6 +490,8 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t event, void *user) {
     archery_key_t key;
     if (event == BSP_BTN_LONG) {
         if (archery_flow_button_is_ok(physical, s_rotate_keys)) {
+            // 主页的诊断入口改为按住 3 秒，由 s_diag_timer 触发。
+            if (s_flow.page == ARCHERY_PAGE_HOME) return;
             key = ARCHERY_KEY_OK_LONG;
         } else {
             return;  // 上键长按已是 PTT，不再产生普通事件
@@ -705,6 +726,11 @@ static void worker_task(void *argument) {
                     refresh_history_count();
                     redraw();
                 }
+            } else if (message.type == APP_MSG_DIAG) {
+                if (s_flow.page == ARCHERY_PAGE_HOME) {
+                    archery_flow_open_diag(&s_flow);
+                    redraw();
+                }
             } else {
                 handle_wifi_event();
             }
@@ -751,6 +777,7 @@ static void worker_task(void *argument) {
 }
 
 void archery_app_start(void) {
+    archery_logbuf_init();
     if (esp_sleep_get_wakeup_causes() & (1u << ESP_SLEEP_WAKEUP_GPIO)) {
         key_guard_arm(&s_key_guard, esp_timer_get_time(), WAKE_GUARD_MAX_US);
         ESP_LOGI(TAG, "按键唤醒：先屏蔽按键动作，直到该键松手");
@@ -820,6 +847,11 @@ void archery_app_start(void) {
     if (esp_timer_create(&repeat_args, &s_repeat_timer) != ESP_OK) {
         ESP_LOGW(TAG, "历史连发定时器创建失败，改用逐行滚动");
         s_repeat_timer = NULL;
+    }
+    const esp_timer_create_args_t diag_args = {.callback = diag_timer_cb, .name = "diag"};
+    if (esp_timer_create(&diag_args, &s_diag_timer) != ESP_OK) {
+        ESP_LOGW(TAG, "诊断入口定时器创建失败");
+        s_diag_timer = NULL;
     }
     if (xTaskCreate(worker_task, "archery", WORKER_STACK_BYTES, NULL, 5, &s_worker) != pdPASS) {
         ESP_LOGE(TAG, "应用任务创建失败，界面只读");

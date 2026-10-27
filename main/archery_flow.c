@@ -1,5 +1,6 @@
 // main/archery_flow.c —— 页面/按键状态机实现（无 LVGL、无 ESP-IDF 依赖）。
 #include "archery_flow.h"
+#include "archery_logbuf.h"
 
 #include <string.h>
 
@@ -206,6 +207,8 @@ static archery_act_t handle_home(archery_flow_t *flow, archery_key_t key) {
         }
         break;
     case ARCHERY_KEY_OK_LONG:
+        // 主页长按确定进入诊断页。
+        archery_flow_open_diag(flow);
         break;
     }
     return ARCHERY_ACT_NONE;
@@ -657,6 +660,61 @@ static archery_act_t handle_abort_confirm(archery_flow_t *flow, archery_key_t ke
     return ARCHERY_ACT_NONE;
 }
 
+void archery_flow_set_log_count(archery_flow_t *flow, uint8_t count) {
+    if (!flow) return;
+    flow->diag_log_count = count > ARCHERY_LOG_LINES ? ARCHERY_LOG_LINES : count;
+    if (flow->diag_log_count > 0 && flow->diag_log_row >= flow->diag_log_count) {
+        flow->diag_log_row = (uint8_t)(flow->diag_log_count - 1u);
+    }
+}
+
+void archery_flow_open_diag(archery_flow_t *flow) {
+    if (!flow) return;
+    flow->diag_row = 0;
+    flow->diag_log_row = 0;
+    flow->page = ARCHERY_PAGE_DIAG;
+}
+
+static archery_act_t handle_diag(archery_flow_t *flow, archery_key_t key) {
+    switch (key) {
+    case ARCHERY_KEY_UP:
+        if (flow->diag_row > 0) flow->diag_row--;
+        break;
+    case ARCHERY_KEY_DOWN:
+        if (flow->diag_row + 1u < ARCHERY_DIAG_ROWS) flow->diag_row++;
+        break;
+    case ARCHERY_KEY_OK:
+        flow->diag_log_row = 0;
+        flow->page = ARCHERY_PAGE_DIAG_LOG;
+        break;
+    case ARCHERY_KEY_OK_LONG:
+        flow->page = ARCHERY_PAGE_HOME;
+        break;
+    }
+    return ARCHERY_ACT_NONE;
+}
+
+static archery_act_t handle_diag_log(archery_flow_t *flow, archery_key_t key) {
+    const uint8_t max = flow->diag_log_count > 0 ? (uint8_t)(flow->diag_log_count - 1u) : 0u;
+    switch (key) {
+    case ARCHERY_KEY_UP:
+        flow->diag_log_row = flow->diag_log_row == 0 ? max
+                                                     : (uint8_t)(flow->diag_log_row - 1u);
+        break;
+    case ARCHERY_KEY_DOWN:
+        flow->diag_log_row = flow->diag_log_row >= max ? 0u
+                                                       : (uint8_t)(flow->diag_log_row + 1u);
+        break;
+    case ARCHERY_KEY_OK:
+        flow->page = ARCHERY_PAGE_DIAG;
+        break;
+    case ARCHERY_KEY_OK_LONG:
+        flow->page = ARCHERY_PAGE_HOME;
+        break;
+    }
+    return ARCHERY_ACT_NONE;
+}
+
 archery_act_t archery_flow_handle(archery_flow_t *flow, archery_key_t key) {
     switch (flow->page) {
     case ARCHERY_PAGE_HOME: return handle_home(flow, key);
@@ -677,6 +735,8 @@ archery_act_t archery_flow_handle(archery_flow_t *flow, archery_key_t key) {
     case ARCHERY_PAGE_CLOCK: return handle_clock(flow, key);
     case ARCHERY_PAGE_WIFI: return handle_wifi(flow, key);
     case ARCHERY_PAGE_WIFI_PASSWORD: return handle_wifi_password(flow, key);
+    case ARCHERY_PAGE_DIAG: return handle_diag(flow, key);
+    case ARCHERY_PAGE_DIAG_LOG: return handle_diag_log(flow, key);
     }
     return ARCHERY_ACT_NONE;
 }

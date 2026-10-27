@@ -24,6 +24,8 @@ typedef enum {
     ARCHERY_PAGE_CLOCK,
     ARCHERY_PAGE_WIFI,
     ARCHERY_PAGE_WIFI_PASSWORD,
+    ARCHERY_PAGE_DIAG,
+    ARCHERY_PAGE_DIAG_LOG,
 } archery_page_t;
 
 // 主页入口数：开始训练 / 历史记录 / 设置 / 联网。
@@ -37,6 +39,7 @@ typedef enum {
 #define ARCHERY_SETUP_ROWS_MAX 6u
 // 手动对时页的字段数：年 / 月 / 日 / 时 / 分。
 #define ARCHERY_CLOCK_ROWS 5u
+#define ARCHERY_DIAG_ROWS 12u
 
 typedef enum {
     ARCHERY_KEY_UP = 0,
@@ -88,6 +91,9 @@ typedef struct {
     uint8_t setup_face[ARCHERY_FACES];  // 三联靶上/中/下各几根箭
     uint8_t home_select;    // 0 = 开始训练, 1 = 历史记录, 2 = 日期时间, 3 = 设置, 4 = 联网
     uint16_t history_count; // 由上层同步：当前筛选下的记录数
+    uint8_t diag_row;
+    uint8_t diag_log_row;
+    uint8_t diag_log_count;
     uint16_t history_cursor; // 0..count+1（count = 清空行，count+1 = 返回行）
     uint8_t history_filter; // archery_history_filter_t
     uint8_t detail_group;   // 历史详情当前查看的组
@@ -133,6 +139,10 @@ void archery_flow_set_history_count(archery_flow_t *flow, uint16_t count);
 
 // 历史页双击确定：循环切换筛选并回到第一条。
 archery_act_t archery_flow_history_cycle_filter(archery_flow_t *flow);
+
+// 打开诊断页（主页长按确定 3 秒后调用）。
+void archery_flow_open_diag(archery_flow_t *flow);
+void archery_flow_set_log_count(archery_flow_t *flow, uint8_t count);
 
 // 当前时间（秒）由上层同步，供手动对时页初始化和"今天/最近 7 天"筛选使用。
 void archery_flow_set_clock(archery_flow_t *flow, uint32_t now, bool time_set);

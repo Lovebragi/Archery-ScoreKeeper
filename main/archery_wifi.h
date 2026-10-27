@@ -41,6 +41,7 @@ esp_err_t archery_wifi_stop_provisioning(void);
 esp_err_t archery_wifi_sync_time(void);
 bool archery_wifi_take_time(uint32_t *seconds);
 
+const char *archery_wifi_current_ssid(void);
 esp_err_t archery_wifi_suspend_for_light_sleep(void);
 esp_err_t archery_wifi_resume_after_light_sleep(void);
 esp_err_t archery_wifi_reconnect(void);

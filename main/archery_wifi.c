@@ -42,6 +42,7 @@ static bool s_sntp_started;
 static bool s_time_ready;
 static uint32_t s_synced_time;
 static char s_ip[16];
+static char s_sta_ssid[ARCHERY_WIFI_SSID_MAX];
 static httpd_handle_t s_httpd;
 static const archery_history_t *s_history;
 static TaskHandle_t s_dns_task;
@@ -197,6 +198,7 @@ esp_err_t archery_wifi_connect(const char *ssid, const char *password) {
         archery_wifi_stop_provisioning();
     }
     s_view.state = ARCHERY_WIFI_CONNECTING;
+    copy_ssid(s_sta_ssid, ssid);
     copy_ssid(s_view.ssid[0], ssid);
     set_message("正在连接…");
     notify();
@@ -240,6 +242,8 @@ esp_err_t archery_wifi_resume_after_light_sleep(void) {
     s_suspended_for_sleep = false;
     return esp_wifi_start();
 }
+const char *archery_wifi_current_ssid(void) { return s_sta_ssid; }
+
 esp_err_t archery_wifi_reconnect(void) {
     if (!s_inited || !s_auto_reconnect) return ESP_ERR_INVALID_STATE;
     if (s_connected || s_view.state == ARCHERY_WIFI_CONNECTING) return ESP_OK;
@@ -798,6 +802,7 @@ esp_err_t archery_wifi_init(archery_wifi_event_cb_t cb, void *user) {
     char ssid[33] = {0};
     char pass[65] = {0};
     if (load_credentials(ssid, sizeof(ssid), pass, sizeof(pass))) {
+        copy_ssid(s_sta_ssid, ssid);
         wifi_config_t sta = {0};
         strncpy((char *)sta.sta.ssid, ssid, sizeof(sta.sta.ssid) - 1);
         strncpy((char *)sta.sta.password, pass, sizeof(sta.sta.password) - 1);

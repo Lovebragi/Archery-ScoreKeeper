@@ -10,6 +10,14 @@
 
 #include "archery_fonts.h"
 #include "archery_layout.h"
+#include "archery_logbuf.h"
+#include "archery_wifi.h"
+#include "archery_wifi_store.h"
+#include "esp_bt.h"
+#include "esp_heap_caps.h"
+#include "esp_system.h"
+#include "esp_timer.h"
+#include "nvs.h"
 #include "archery_qr.h"
 #include "archery_version.h"
 #include "archery_wifi_view.h"
@@ -135,19 +143,6 @@ static void add_signal_bars(lv_obj_t *scr, uint32_t color, uint8_t bars) {
     }
 }
 
-// 未联网时电池下方只画一条 1 px 的细红线。
-static void add_signal_line(lv_obj_t *scr, uint32_t color) {
-    lv_obj_t *line = lv_obj_create(scr);
-    lv_obj_set_pos(line, 202, 19);
-    lv_obj_set_size(line, 24, 1);
-    lv_obj_set_style_radius(line, 0, 0);
-    lv_obj_set_style_bg_color(line, lv_color_hex(color), 0);
-    lv_obj_set_style_bg_opa(line, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(line, 0, 0);
-    lv_obj_set_style_pad_all(line, 0, 0);
-    lv_obj_remove_flag(line, LV_OBJ_FLAG_SCROLLABLE);
-}
-
 // 顶部状态栏：左侧时间；电池与下方图形表示电量与网络状态。
 static void add_status_bar(lv_obj_t *scr, const archery_flow_t *flow,
                            const archery_wifi_view_t *view) {
@@ -161,12 +156,11 @@ static void add_status_bar(lv_obj_t *scr, const archery_flow_t *flow,
     lv_obj_t *clock = make_label(scr, time_text, ARCHERY_FONT_BODY, C_MUTED);
     lv_obj_align(clock, LV_ALIGN_TOP_RIGHT, -42, 4);
 
+    // 只有联网时才画信号格；未联网/配网中留空。
     if (view && view->sta_connected) {
         const int8_t rssi = view->sta_rssi;
         const uint8_t bars = rssi >= -55 ? 4 : (rssi >= -65 ? 3 : (rssi >= -75 ? 2 : 1));
         add_signal_bars(scr, C_GREEN, bars);
-    } else {
-        add_signal_line(scr, 0xB8B8B8u);
     }
 }
 
@@ -902,6 +896,167 @@ static void render_confirm(lv_obj_t *scr, const archery_flow_t *flow,
 // 入口
 // ---------------------------------------------------------------------------
 
+static const char *diag_reset_text(esp_reset_reason_t reason) {
+    switch (reason) {
+    case ESP_RST_POWERON: return "上电";
+    case ESP_RST_SW: return "软件复位";
+    case ESP_RST_PANIC: return "异常";
+    case ESP_RST_INT_WDT: return "中断看门狗";
+    case ESP_RST_TASK_WDT: return "任务看门狗";
+    case ESP_RST_WDT: return "看门狗";
+    case ESP_RST_DEEPSLEEP: return "深睡唤醒";
+    case ESP_RST_BROWNOUT: return "欠压";
+    case ESP_RST_EXT: return "外部复位";
+    default: return "未知";
+    }
+}
+
+static void render_diag(lv_obj_t *scr, const archery_flow_t *flow,
+                        const archery_history_t *history, int battery_soc) {
+    add_title(scr, "诊断");
+    static const char *names[ARCHERY_DIAG_ROWS] = {
+        "Wi-Fi", "SSID", "信号", "蓝牙", "空闲内存", "内存最低",
+        "最大块", "LVGL", "NVS", "历史记录", "电量", "复位/运行",
+    };
+    const uint8_t visible = 6;
+    uint8_t offset = flow->diag_row >= visible ? (uint8_t)(flow->diag_row - visible + 1u) : 0u;
+    if (offset > ARCHERY_DIAG_ROWS - visible) offset = ARCHERY_DIAG_ROWS - visible;
+    char page[16];
+    snprintf(page, sizeof(page), "%u-%u / %u", (unsigned)(offset + 1u),
+             (unsigned)(offset + visible), (unsigned)ARCHERY_DIAG_ROWS);
+    centered_label(scr, page, ARCHERY_FONT_BODY, C_MUTED, 34);
+
+    char value[40];
+    for (uint8_t i = 0; i < visible; i++) {
+        const uint8_t row = (uint8_t)(offset + i);
+        const archery_rect_t rect = {20, (int16_t)(54 + i * 32), 200, 28};
+        const bool selected = flow->diag_row == row;
+        lv_obj_t *card = make_card(scr, rect, selected, false);
+        lv_obj_t *name = make_label(card, names[row], ARCHERY_FONT_BODY,
+                                    selected ? C_GOLD : C_TEXT);
+        lv_obj_align(name, LV_ALIGN_LEFT_MID, 10, 0);
+        value[0] = '\0';
+        switch (row) {
+        case 0:
+            if (!s_wifi_view) snprintf(value, sizeof(value), "未初始化");
+            else if (s_wifi_view->state == ARCHERY_WIFI_AP_READY) snprintf(value, sizeof(value), "配网中");
+            else if (s_wifi_view->sta_connected) snprintf(value, sizeof(value), "已连接");
+            else snprintf(value, sizeof(value), "未连接");
+            break;
+        case 1: {
+            const char *ssid = archery_wifi_current_ssid();
+            snprintf(value, sizeof(value), "%s", ssid && ssid[0] ? ssid : "--");
+            break;
+        }
+        case 2:
+            if (s_wifi_view && s_wifi_view->sta_connected) {
+                snprintf(value, sizeof(value), "%d dBm", (int)s_wifi_view->sta_rssi);
+            } else {
+                snprintf(value, sizeof(value), "--");
+            }
+            break;
+        case 3: {
+            const esp_bt_controller_status_t bt = esp_bt_controller_get_status();
+            snprintf(value, sizeof(value), "%s",
+                     bt == ESP_BT_CONTROLLER_STATUS_ENABLED ? "已启用" : "未启用");
+            break;
+        }
+        case 4:
+            snprintf(value, sizeof(value), "%u KB",
+                     (unsigned)(esp_get_free_heap_size() / 1024));
+            break;
+        case 5:
+            snprintf(value, sizeof(value), "%u KB",
+                     (unsigned)(esp_get_minimum_free_heap_size() / 1024));
+            break;
+        case 6:
+            snprintf(value, sizeof(value), "%u KB",
+                     (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024));
+            break;
+        case 7: {
+            lv_mem_monitor_t mon;
+            lv_mem_monitor(&mon);
+            snprintf(value, sizeof(value), "%u/%u KB",
+                     (unsigned)(mon.total_size / 1024),
+                     (unsigned)((mon.total_size - mon.free_size) / 1024));
+            break;
+        }
+        case 8: {
+            nvs_stats_t stats;
+            if (nvs_get_stats(NULL, &stats) == ESP_OK) {
+                snprintf(value, sizeof(value), "%u/%u",
+                         (unsigned)stats.used_entries, (unsigned)stats.total_entries);
+            } else {
+                snprintf(value, sizeof(value), "--");
+            }
+            break;
+        }
+        case 9:
+            snprintf(value, sizeof(value), "%u 条", (unsigned)history->meta.count);
+            break;
+        case 10:
+            snprintf(value, sizeof(value), "%d%%", battery_soc);
+            break;
+        default: {
+            const int64_t seconds = esp_timer_get_time() / 1000000;
+            snprintf(value, sizeof(value), "%s %u:%02u",
+                     diag_reset_text(esp_reset_reason()), (unsigned)(seconds / 60),
+                     (unsigned)(seconds % 60));
+            break;
+        }
+        }
+        lv_obj_t *number = make_label(card, value, ARCHERY_FONT_BODY,
+                                      selected ? C_GOLD : C_TEXT);
+        lv_obj_align(number, LV_ALIGN_RIGHT_MID, -8, 0);
+    }
+    add_hint(scr, "上/下 选择 · 确定 日志", 262);
+    add_hint(scr, "长按确定 返回主页", 288);
+}
+
+static void render_diag_log(lv_obj_t *scr, const archery_flow_t *flow) {
+    add_title(scr, "日志");
+    static char log_text[ARCHERY_LOG_LINES * ARCHERY_LOG_LINE_CHARS];
+    archery_logbuf_snapshot(log_text, sizeof(log_text));
+
+    static const char *lines[ARCHERY_LOG_LINES];
+    uint8_t count = 0;
+    char *cursor = log_text;
+    while (cursor && *cursor && count < ARCHERY_LOG_LINES) {
+        lines[count++] = cursor;
+        char *newline = strchr(cursor, '\n');
+        if (!newline) break;
+        *newline = '\0';
+        cursor = newline + 1;
+    }
+
+    char count_text[16];
+    snprintf(count_text, sizeof(count_text), "%u 条", (unsigned)count);
+    centered_label(scr, count_text, ARCHERY_FONT_BODY, C_MUTED, 34);
+
+    archery_font_audit_set_enabled(false);
+    const lv_font_t *font = ssid_font();
+    int16_t y = 44;
+    for (uint8_t index = flow->diag_log_row; index < count; index++) {
+        char clean[ARCHERY_LOG_LINE_CHARS * 3];
+        archery_font_filter(font, lines[index], clean, sizeof(clean));
+        lv_point_t size;
+        lv_text_get_size(&size, clean, font, 0, 2, 224, LV_TEXT_FLAG_NONE);
+        if (y + size.y > 262) break;
+        lv_obj_t *label = make_label(scr, clean, font,
+                                     index == flow->diag_log_row ? C_GOLD : C_TEXT);
+        lv_obj_set_pos(label, 8, y);
+        lv_obj_set_width(label, 224);
+        lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+        y += (int16_t)(size.y + 4);
+    }
+    archery_font_audit_set_enabled(true);
+    if (count == 0) {
+        centered_label(scr, "暂无日志", ARCHERY_FONT_BODY, C_MUTED, 120);
+    }
+    add_hint(scr, "上/下 滚动 · 确定 返回", 266);
+    add_hint(scr, "长按确定 返回主页", 290);
+}
+
 void archery_ui_show(const archery_flow_t *flow, const archery_history_t *history,
                      int battery_soc) {
     if (!flow || !history) return;
@@ -925,6 +1080,8 @@ void archery_ui_show(const archery_flow_t *flow, const archery_history_t *histor
     case ARCHERY_PAGE_CLOCK: render_clock(scr, flow); break;
     case ARCHERY_PAGE_WIFI: render_wifi(scr, flow); break;
     case ARCHERY_PAGE_WIFI_PASSWORD: render_wifi_password(scr, flow); break;
+    case ARCHERY_PAGE_DIAG: render_diag(scr, flow, history, battery_soc); break;
+    case ARCHERY_PAGE_DIAG_LOG: render_diag_log(scr, flow); break;
     }
     add_battery(scr, battery_soc);
     add_status_bar(scr, flow, s_wifi_view);

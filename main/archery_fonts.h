@@ -20,3 +20,10 @@ LV_FONT_DECLARE(archery_font_20);
 // 记录警告。界面里每条文字创建时都会调用，因此新增中文忘记重新生成字体时
 // 串口日志会直接指出缺哪个字。
 void archery_font_audit(const lv_font_t *font, const char *text);
+
+// 诊断日志页含任意 ASCII，临时关闭缺字审计，避免刷屏。
+void archery_font_audit_set_enabled(bool enabled);
+
+// 把 font 缺字形的字符替换为 '?'，避免日志页出现方块。
+void archery_font_filter(const lv_font_t *font, const char *text, char *out,
+                         size_t capacity);

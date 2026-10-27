@@ -8,6 +8,26 @@ Release history for the archery scorekeeper application. The repository-wide
 [changelog](../CHANGELOG.md) tracks the AI Passport project itself; this file
 follows the application's firmware versions.
 
+## 1.3.6 — 2026-10-28
+
+### Added
+
+- Hold OK on the home screen for about three seconds to open Diagnostics: Wi-Fi
+  state, SSID, signal, Bluetooth state, free/minimum heap, largest block, LVGL
+  memory, NVS entries, history count, battery, reset reason and uptime.
+- Press OK in Diagnostics to view the last 32 in-memory log lines. Lines wrap to
+  the panel width, support hold-to-scroll with wrap-around, and unsupported
+  glyphs are shown as `?` instead of boxes.
+
+### Fixed
+
+- The diagnostics SSID stayed `--` when the device auto-connected at boot.
+
+### Changed
+
+- The status bar no longer draws a grey line or red cross when disconnected; it
+  only shows the four green signal dashes while connected.
+
 ## 1.3.5 — 2026-10-28
 
 ### Fixed

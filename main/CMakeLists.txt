@@ -5,6 +5,7 @@ idf_component_register(
          "archery_flow.c"
          "archery_history.c"
          "archery_layout.c"
+         "archery_logbuf.c"
          "archery_score.c"
          "archery_speech.c"
          "archery_session.c"

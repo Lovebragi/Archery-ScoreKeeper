@@ -8,6 +8,12 @@ Release history for the archery scorekeeper application. The repository-wide
 [changelog](../CHANGELOG.md) tracks the AI Passport project itself; this file
 follows the application's firmware versions.
 
+## 1.4.3 — 2026-10-30
+
+### Fixed
+
+- Diagnostics/logs showed question marks for runtime text such as the ring character; the font now includes the ASR log vocabulary.
+
 ## 1.4.2 — 2026-10-30
 
 ### Fixed

@@ -1,5 +1,6 @@
 // main/archery_voice.c —— 实验：PTT 报靶语音上传与结果解析。
 #include "archery_voice.h"
+#include "esp_timer.h"
 #include "archery_countdown_pcm.h"
 
 #include <stdio.h>
@@ -51,6 +52,7 @@ static TaskHandle_t s_task;
 static volatile bool s_active;
 static volatile bool s_stop_requested;
 static volatile bool s_result_ready;
+static esp_timer_handle_t s_stop_timer;
 static archery_voice_result_t s_result;
 
 static bool parse_url(const char *url, voice_endpoint_t *out) {
@@ -346,7 +348,8 @@ static void run_ws_session(void) {
     // 预热连接可能已被服务端关闭：先发 10 ms 静音探活，失败就重连一次。
     int16_t probe[160] = {0};
     if (!archery_ws_send_audio(probe, 160, false)) {
-        archery_ws_close();
+        if (s_stop_timer) (void)esp_timer_stop(s_stop_timer);
+    archery_ws_close();
         if (!archery_ws_open(s_appid, s_token, s_api_key)) {
             archery_voice_set_status(open_failure_status());
             play_tone(600, 150, 2, 100);
@@ -376,6 +379,7 @@ static void run_ws_session(void) {
         if (last) break;
         if (!archery_ws_connected()) break;
     }
+    if (s_stop_timer) (void)esp_timer_stop(s_stop_timer);
     archery_ws_close();
 
     archery_speech_result_t parsed;
@@ -609,6 +613,20 @@ esp_err_t archery_voice_start(void) {
     return ESP_OK;
 }
 
+static void stop_timer_cb(void *arg) {
+    (void)arg;
+    if (s_active) archery_ws_abort();
+}
+
 void archery_voice_stop(void) {
-    if (s_active) s_stop_requested = true;
+    if (!s_active) return;
+    s_stop_requested = true;
+    if (!s_stop_timer) {
+        const esp_timer_create_args_t args = {.callback = stop_timer_cb, .name = "asr_stop"};
+        if (esp_timer_create(&args, &s_stop_timer) != ESP_OK) s_stop_timer = NULL;
+    }
+    if (s_stop_timer) {
+        (void)esp_timer_stop(s_stop_timer);
+        (void)esp_timer_start_once(s_stop_timer, 1200000);
+    }
 }

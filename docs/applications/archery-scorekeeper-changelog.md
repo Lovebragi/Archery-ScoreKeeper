@@ -8,6 +8,12 @@ Release history for the archery scorekeeper application. The repository-wide
 [changelog](../CHANGELOG.md) tracks the AI Passport project itself; this file
 follows the application's firmware versions.
 
+## 1.4.2 — 2026-10-30
+
+### Fixed
+
+- Failed recognition no longer waits 2-3 seconds: the blocking read is aborted 1.2 s after release, so "not recognized" is shown promptly.
+
 ## 1.4.1 — 2026-10-30
 
 ### Added

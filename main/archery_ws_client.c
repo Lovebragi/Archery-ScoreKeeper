@@ -3,6 +3,8 @@
 #include "miniz.h"
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <sys/select.h>
+#include <sys/socket.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -345,6 +347,14 @@ bool archery_ws_read(char *text, size_t capacity) {
         return handle_frame(s_frame, len, text, capacity);
     }
     return false;
+}
+
+void archery_ws_abort(void) {
+    if (!s_tls) return;
+    int fd = -1;
+    if (esp_tls_get_conn_sockfd(s_tls, &fd) == ESP_OK && fd >= 0) {
+        (void)shutdown(fd, SHUT_RDWR);
+    }
 }
 
 void archery_ws_close(void) {

@@ -15,6 +15,8 @@ bool archery_ws_send_audio(const int16_t *pcm, size_t samples, bool last);
 bool archery_ws_read(char *text, size_t capacity);
 
 void archery_ws_close(void);
+// 仅 shutdown 底层 socket，用于解除阻塞读；不释放 TLS 对象。
+void archery_ws_abort(void);
 bool archery_ws_connected(void);
 
 // 最近一次打开失败时的 HTTP 状态码（401/403 表示凭据无效），0 表示未知。

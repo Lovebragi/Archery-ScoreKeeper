@@ -17,4 +17,5 @@ void archery_ui_set_wifi_view(const archery_wifi_view_t *view);
 void archery_ui_set_voice_status(const char *text);
 
 // 删除当前应用界面（退出应用时调用）。
+void archery_ui_timer_tick(const archery_flow_t *flow);
 void archery_ui_clear(void);

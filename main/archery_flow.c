@@ -448,6 +448,13 @@ static archery_act_t handle_setup(archery_flow_t *flow, archery_key_t key) {
                    archery_flow_setup_faces_total(flow) == flow->setup_arrows) {
             archery_session_begin(&flow->session, flow->setup_groups, flow->setup_arrows,
                                   flow->settings.target);
+            if (flow->settings.timer_seconds > 0u) {
+                flow->timer_phase = 0;
+                flow->timer_remaining = 1;
+                flow->timer_total = 0;
+                flow->page = ARCHERY_PAGE_TIMER;
+                return ARCHERY_ACT_TIMER_START;
+            }
             begin_group_input(flow);
             flow->page = ARCHERY_PAGE_ENTRY;
             return ARCHERY_ACT_SESSION_START;
@@ -535,6 +542,13 @@ static archery_act_t handle_summary(archery_flow_t *flow, archery_key_t key) {
             flow->save_failed = false;
             flow->page = ARCHERY_PAGE_FINISH;
             return ARCHERY_ACT_SAVE_RECORD;
+        }
+        if (flow->settings.timer_seconds > 0u) {
+            flow->timer_phase = 0;
+            flow->timer_remaining = 1;
+            flow->timer_total = 0;
+            flow->page = ARCHERY_PAGE_TIMER;
+            return ARCHERY_ACT_TIMER_START;
         }
         begin_group_input(flow);
         flow->page = ARCHERY_PAGE_ENTRY;
@@ -675,6 +689,26 @@ void archery_flow_open_diag(archery_flow_t *flow) {
     flow->page = ARCHERY_PAGE_DIAG;
 }
 
+void archery_flow_enter_entry_from_timer(archery_flow_t *flow) {
+    if (!flow || flow->page != ARCHERY_PAGE_TIMER) return;
+    begin_group_input(flow);
+    flow->page = ARCHERY_PAGE_ENTRY;
+}
+
+static archery_act_t handle_timer(archery_flow_t *flow, archery_key_t key) {
+    switch (key) {
+    case ARCHERY_KEY_OK:
+        archery_flow_enter_entry_from_timer(flow);
+        return ARCHERY_ACT_TIMER_STOP;
+    case ARCHERY_KEY_OK_LONG:
+        flow->page = ARCHERY_PAGE_SETUP;
+        return ARCHERY_ACT_TIMER_STOP;
+    default:
+        break;
+    }
+    return ARCHERY_ACT_NONE;
+}
+
 static archery_act_t handle_diag(archery_flow_t *flow, archery_key_t key) {
     switch (key) {
     case ARCHERY_KEY_UP:
@@ -737,6 +771,7 @@ archery_act_t archery_flow_handle(archery_flow_t *flow, archery_key_t key) {
     case ARCHERY_PAGE_WIFI_PASSWORD: return handle_wifi_password(flow, key);
     case ARCHERY_PAGE_DIAG: return handle_diag(flow, key);
     case ARCHERY_PAGE_DIAG_LOG: return handle_diag_log(flow, key);
+    case ARCHERY_PAGE_TIMER: return handle_timer(flow, key);
     }
     return ARCHERY_ACT_NONE;
 }

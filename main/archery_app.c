@@ -10,6 +10,7 @@
 
 #include "archery_flow.h"
 #include "archery_logbuf.h"
+#include "archery_name.h"
 #include "archery_history.h"
 #include "archery_score.h"
 #include "archery_settings.h"
@@ -50,6 +51,7 @@ typedef enum {
     APP_MSG_VOICE_STOP,
     APP_MSG_HISTORY_FILTER,
     APP_MSG_DIAG,
+    APP_MSG_TIMER_TICK,
 } app_msg_type_t;
 
 typedef struct {
@@ -84,6 +86,12 @@ static key_guard_t s_key_guard;
 static int64_t s_wake_click_until_us;
 static int64_t s_next_wifi_retry_us;
 static esp_timer_handle_t s_diag_timer;
+static esp_timer_handle_t s_timer_tick;
+static bool s_timer_running;
+static bool s_timer_warned;
+static uint8_t s_timer_voice_left;
+static QueueHandle_t s_countdown_q;
+static int64_t s_timer_deadline_us;
 // 墙上时钟：基准时间 + 单调计时器。设备没有 RTC 电池，断电后时间从上次保存
 // 的时刻继续；设置页可手动校准。
 static uint32_t s_clock_base;
@@ -284,12 +292,132 @@ static void handle_wifi_event(void) {
     redraw();
 }
 
+static void beep_sequence(int count) {
+    for (int i = 0; i < count; i++) {
+        archery_voice_preview_beep();
+        if (i + 1 < count) vTaskDelay(pdMS_TO_TICKS(400));
+    }
+}
+
+static void countdown_say(uint8_t number) {
+    if (s_countdown_q) (void)xQueueSend(s_countdown_q, &number, 0);
+}
+
+static void countdown_voice_task(void *arg) {
+    (void)arg;
+    uint8_t number;
+    for (;;) {
+        if (xQueueReceive(s_countdown_q, &number, portMAX_DELAY) == pdTRUE) {
+            switch (number) {
+            case 0xFFu: archery_voice_beep_warning(); break;
+            case 0xFEu: beep_sequence(2); break;
+            case 0xFDu: beep_sequence(1); break;
+            case 0xFCu: beep_sequence(3); break;
+            default: archery_voice_play_countdown(number); break;
+            }
+        }
+    }
+}
+
+static void timer_stop_sequence(void) {
+    s_timer_running = false;
+    if (s_countdown_q) (void)xQueueReset(s_countdown_q);
+    if (s_timer_tick) (void)esp_timer_stop(s_timer_tick);
+}
+
+static void timer_start_sequence(void) {
+    s_timer_running = true;
+    s_timer_warned = false;
+    s_timer_voice_left = 0;
+    s_flow.timer_remaining = 10;
+    s_timer_deadline_us = esp_timer_get_time() + 1000000;
+    if (s_timer_tick) {
+        (void)esp_timer_stop(s_timer_tick);
+        (void)esp_timer_start_periodic(s_timer_tick, 50000);
+    }
+}
+
+static uint16_t timer_seconds_left(int64_t now) {
+    const int64_t left = s_timer_deadline_us - now;
+    if (left <= 0) return 0;
+    return (uint16_t)((left + 999999) / 1000000);
+}
+
+static void handle_timer_tick(void) {
+    if (!s_timer_running || s_flow.page != ARCHERY_PAGE_TIMER) {
+        timer_stop_sequence();
+        return;
+    }
+    const int64_t now = esp_timer_get_time();
+    if (s_flow.timer_phase == 0) {
+        if (now < s_timer_deadline_us) return;
+        beep_sequence(2);
+        s_flow.timer_phase = 1;
+        s_flow.timer_remaining = 10;
+        s_timer_deadline_us = now + 10000000;
+    } else if (s_flow.timer_phase == 1) {
+        const uint16_t left = timer_seconds_left(now);
+        if (left != s_flow.timer_remaining) {
+            s_flow.timer_remaining = left;
+            if (left == 0) {
+                uint32_t total = (uint32_t)s_flow.session.arrows *
+                                 (uint32_t)s_flow.settings.timer_seconds;
+                if (total == 0) total = 1;
+                if (total > UINT16_MAX) total = UINT16_MAX;
+                s_flow.timer_phase = 2;
+                s_flow.timer_total = (uint16_t)total;
+                s_flow.timer_remaining = (uint16_t)total;
+                s_timer_deadline_us = now + (int64_t)total * 1000000;
+                s_timer_warned = false;
+                s_timer_voice_left = 0;
+                beep_sequence(1);
+            }
+        }
+    } else {
+        const uint16_t left = timer_seconds_left(now);
+        const bool changed = left != s_flow.timer_remaining;
+        s_flow.timer_remaining = left;
+        if (!s_timer_warned && left <= 30 && s_flow.timer_total > 30) {
+            s_timer_warned = true;
+            countdown_say(0xFFu);
+        }
+        if (s_flow.settings.countdown_voice && left >= 1 && left <= 10 &&
+            left != s_timer_voice_left) {
+            s_timer_voice_left = (uint8_t)left;
+            countdown_say((uint8_t)left);
+        }
+        if (left == 0) {
+            s_timer_voice_left = 0;
+            beep_sequence(3);
+            timer_stop_sequence();
+            archery_flow_enter_entry_from_timer(&s_flow);
+        } else if (!changed && left == s_flow.timer_remaining) {
+            return;
+        }
+    }
+    if (s_flow.page == ARCHERY_PAGE_TIMER) {
+        archery_ui_timer_tick(&s_flow);
+    } else {
+        redraw();
+    }
+}
+
 static void handle_key(archery_key_t key) {
     const archery_act_t action = archery_flow_handle(&s_flow, key);
     switch (action) {
     case ARCHERY_ACT_SESSION_START:
         s_session_start_us = esp_timer_get_time();
         s_session_when = clock_now();
+        break;
+    case ARCHERY_ACT_TIMER_START:
+        if (s_flow.session.group == 0) {
+            s_session_start_us = esp_timer_get_time();
+            s_session_when = clock_now();
+        }
+        timer_start_sequence();
+        break;
+    case ARCHERY_ACT_TIMER_STOP:
+        timer_stop_sequence();
         break;
     case ARCHERY_ACT_SAVE_RECORD: {
         const int64_t elapsed_us = esp_timer_get_time() - s_session_start_us;
@@ -409,6 +537,13 @@ static void repeat_timer_cb(void *arg) {
     // 第一次触发时从 400 ms 延时切到 60 ms 周期。
     (void)esp_timer_stop(s_repeat_timer);
     (void)esp_timer_start_periodic(s_repeat_timer, 60000);
+}
+
+static void timer_tick_cb(void *arg) {
+    (void)arg;
+    if (!s_queue) return;
+    const app_message_t message = {.type = APP_MSG_TIMER_TICK};
+    (void)xQueueSend(s_queue, &message, 0);
 }
 
 static void diag_timer_cb(void *arg) {
@@ -731,6 +866,8 @@ static void worker_task(void *argument) {
                     archery_flow_open_diag(&s_flow);
                     redraw();
                 }
+            } else if (message.type == APP_MSG_TIMER_TICK) {
+                handle_timer_tick();
             } else {
                 handle_wifi_event();
             }
@@ -758,6 +895,7 @@ static void worker_task(void *argument) {
             now - s_last_input_us >= (int64_t)off_seconds * 1000000 &&
             s_flow.page != ARCHERY_PAGE_WIFI &&
             s_flow.page != ARCHERY_PAGE_WIFI_PASSWORD &&
+            s_flow.page != ARCHERY_PAGE_TIMER &&
             !archery_wifi_provisioning()) {
             light_sleep_now();
         }
@@ -778,6 +916,7 @@ static void worker_task(void *argument) {
 
 void archery_app_start(void) {
     archery_logbuf_init();
+    archery_name_init();
     if (esp_sleep_get_wakeup_causes() & (1u << ESP_SLEEP_WAKEUP_GPIO)) {
         key_guard_arm(&s_key_guard, esp_timer_get_time(), WAKE_GUARD_MAX_US);
         ESP_LOGI(TAG, "按键唤醒：先屏蔽按键动作，直到该键松手");
@@ -852,6 +991,15 @@ void archery_app_start(void) {
     if (esp_timer_create(&diag_args, &s_diag_timer) != ESP_OK) {
         ESP_LOGW(TAG, "诊断入口定时器创建失败");
         s_diag_timer = NULL;
+    }
+    const esp_timer_create_args_t timer_args = {.callback = timer_tick_cb, .name = "match"};
+    if (esp_timer_create(&timer_args, &s_timer_tick) != ESP_OK) {
+        ESP_LOGW(TAG, "比赛计时器创建失败");
+        s_timer_tick = NULL;
+    }
+    s_countdown_q = xQueueCreate(4, sizeof(uint8_t));
+    if (s_countdown_q) {
+        (void)xTaskCreate(countdown_voice_task, "cd_voice", 4096, NULL, 4, NULL);
     }
     if (xTaskCreate(worker_task, "archery", WORKER_STACK_BYTES, NULL, 5, &s_worker) != pdPASS) {
         ESP_LOGE(TAG, "应用任务创建失败，界面只读");

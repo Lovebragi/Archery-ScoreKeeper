@@ -11,6 +11,7 @@
 #include "archery_fonts.h"
 #include "archery_layout.h"
 #include "archery_logbuf.h"
+#include "archery_name.h"
 #include "archery_wifi.h"
 #include "archery_wifi_store.h"
 #include "esp_bt.h"
@@ -22,6 +23,7 @@
 #include "archery_version.h"
 #include "archery_wifi_view.h"
 #include "bsp_pins.h"
+#include "bsp_display.h"
 #include "lvgl.h"
 #include <stdio.h>
 #include <string.h>
@@ -39,6 +41,9 @@
 #define C_GREEN     0x63C08A
 
 static lv_obj_t *s_screen;
+static lv_obj_t *s_timer_title;
+static lv_obj_t *s_timer_clock;
+static lv_obj_t *s_timer_hint;
 static const archery_wifi_view_t *s_wifi_view;
 
 // SSID 可能包含任意中文，用 LVGL 自带的 CJK 字体覆盖，避免缺字方块。
@@ -251,7 +256,10 @@ static void format_average(char *buffer, size_t size, uint16_t average_x10) {
 
 static void render_home(lv_obj_t *scr, const archery_flow_t *flow) {
     add_target(scr, 120, 70);
-    centered_label(scr, "射箭计分", ARCHERY_FONT_TITLE, C_TEXT, 126);
+    const char *device_name = archery_name_get();
+    const lv_font_t *name_font =
+        strcmp(device_name, ARCHERY_NAME_DEFAULT) == 0 ? ARCHERY_FONT_TITLE : ssid_font();
+    centered_label(scr, device_name, name_font, C_TEXT, 126);
     char range[48];
     snprintf(range, sizeof(range), "%s · %s", target_name(flow->settings.target),
              target_ring_range(flow->settings.target));
@@ -292,6 +300,9 @@ static void render_setup(lv_obj_t *scr, const archery_flow_t *flow) {
         lv_obj_t *card = make_card(scr, rect, selected, false);
         lv_obj_t *name = make_label(card, faces ? face_names[row] : single_names[row],
                                     ARCHERY_FONT_BODY, selected ? C_GOLD : C_TEXT);
+        if (is_start && flow->settings.timer_seconds > 0u) {
+            lv_label_set_text(name, "开始");
+        }
         if (!is_start) {
             lv_obj_align(name, LV_ALIGN_LEFT_MID, 12, 0);
             if (row == 0) {
@@ -422,8 +433,13 @@ static void render_summary(lv_obj_t *scr, const archery_flow_t *flow) {
 
     add_group_dots(scr, session->groups, session->group, 206);
 
-    add_hint(scr, archery_session_complete(session) ? "确定 查看总结" : "确定 继续下一组",
-             240);
+    const bool complete = archery_session_complete(session);
+    const archery_rect_t button = {40, 228, 160, 30};
+    lv_obj_t *next_card = make_card(scr, button, true, false);
+    lv_obj_t *next_label = make_label(next_card, complete ? "查看总结" : "开始下一组",
+                                      ARCHERY_FONT_BODY, C_GOLD);
+    lv_obj_center(next_label);
+
     add_hint(scr, "长按确定 放弃本次训练", 266);
 }
 
@@ -780,8 +796,8 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
     add_title(scr, "设置");
 
     static const char *row_names[] = {"靶子类型", "屏幕方向", "屏幕亮度",
-                                      "息屏时间", "记录内十", "语音输入",
-                                      "提示音量", "保存Wi-Fi密码"};
+                                      "息屏时间", "记录内十", "每组计时",
+                                      "倒数十秒语音", "语音输入", "提示音量", "保存Wi-Fi密码"};
     char value[24];
     const uint8_t visible = 6;
     uint8_t offset = flow->settings_row >= visible ? (uint8_t)(flow->settings_row - visible + 1u) : 0u;
@@ -814,12 +830,22 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
         } else if (row == 4) {
             snprintf(value, sizeof(value), "%s", flow->settings.record_x ? "开" : "关");
         } else if (row == 5) {
+            if (flow->settings.timer_seconds == 0u) {
+                snprintf(value, sizeof(value), "关");
+            } else {
+                snprintf(value, sizeof(value), "%u 秒/支",
+                         (unsigned)flow->settings.timer_seconds);
+            }
+        } else if (row == 6) {
+            snprintf(value, sizeof(value), "%s",
+                     flow->settings.countdown_voice ? "开" : "关");
+        } else if (row == 7) {
             snprintf(value, sizeof(value), "%s",
                      flow->settings.voice_enabled ? "开" : "关");
-        } else if (row == 6) {
+        } else if (row == 8) {
             snprintf(value, sizeof(value), "%u%%",
                      (unsigned)(flow->settings.beep_volume * 20u));
-        } else if (row == 7) {
+        } else if (row == 9) {
             snprintf(value, sizeof(value), "%s",
                      flow->settings.wifi_save ? "开" : "关");
         }
@@ -1057,12 +1083,48 @@ static void render_diag_log(lv_obj_t *scr, const archery_flow_t *flow) {
     add_hint(scr, "长按确定 返回主页", 290);
 }
 
+static void render_timer(lv_obj_t *scr, const archery_flow_t *flow) {
+    const bool shooting = flow->timer_phase == 2;
+    char clock[8];
+    snprintf(clock, sizeof(clock), shooting ? "%u:%02u" : "%u",
+             shooting ? (unsigned)(flow->timer_remaining / 60u)
+                      : (unsigned)flow->timer_remaining,
+             shooting ? (unsigned)(flow->timer_remaining % 60u) : 0u);
+    s_timer_title = make_label(scr, shooting ? "射击" : "准备", ARCHERY_FONT_TITLE, C_TEXT);
+    lv_obj_align(s_timer_title, LV_ALIGN_TOP_MID, 0, 8);
+    s_timer_clock = make_label(scr, clock, ARCHERY_FONT_BIG, C_GOLD);
+    lv_obj_align(s_timer_clock, LV_ALIGN_TOP_MID, 0, 105);
+    s_timer_hint = make_label(scr, shooting ? "每支箭结束后再记分" : "听到两声后准备",
+                              ARCHERY_FONT_BODY, C_MUTED);
+    lv_obj_align(s_timer_hint, LV_ALIGN_TOP_MID, 0, 160);
+    add_hint(scr, "确定 跳过计时", 240);
+    add_hint(scr, "长按确定 返回新训练", 266);
+}
+
+void archery_ui_timer_tick(const archery_flow_t *flow) {
+    if (!flow || !s_timer_title || !s_timer_clock || !s_timer_hint) return;
+    if (!bsp_lvgl_lock(500)) return;
+    const bool shooting = flow->timer_phase == 2;
+    char clock[8];
+    snprintf(clock, sizeof(clock), shooting ? "%u:%02u" : "%u",
+             shooting ? (unsigned)(flow->timer_remaining / 60u)
+                      : (unsigned)flow->timer_remaining,
+             shooting ? (unsigned)(flow->timer_remaining % 60u) : 0u);
+    lv_label_set_text(s_timer_title, shooting ? "射击" : "准备");
+    lv_label_set_text(s_timer_clock, clock);
+    lv_label_set_text(s_timer_hint, shooting ? "每支箭结束后再记分" : "听到两声后准备");
+    bsp_lvgl_unlock();
+}
+
 void archery_ui_show(const archery_flow_t *flow, const archery_history_t *history,
                      int battery_soc) {
     if (!flow || !history) return;
     // 先把新页面挂上去再删旧页面：直接删除当前活动屏幕会让 LVGL 打
     // "the active screen was deleted" 警告，并在一帧内没有活动屏幕。
     lv_obj_t *previous = s_screen;
+    s_timer_title = NULL;
+    s_timer_clock = NULL;
+    s_timer_hint = NULL;
     lv_obj_t *scr = base_screen();
     s_screen = scr;
 
@@ -1082,6 +1144,7 @@ void archery_ui_show(const archery_flow_t *flow, const archery_history_t *histor
     case ARCHERY_PAGE_WIFI_PASSWORD: render_wifi_password(scr, flow); break;
     case ARCHERY_PAGE_DIAG: render_diag(scr, flow, history, battery_soc); break;
     case ARCHERY_PAGE_DIAG_LOG: render_diag_log(scr, flow); break;
+    case ARCHERY_PAGE_TIMER: render_timer(scr, flow); break;
     }
     add_battery(scr, battery_soc);
     add_status_bar(scr, flow, s_wifi_view);

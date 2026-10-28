@@ -8,6 +8,24 @@ Release history for the archery scorekeeper application. The repository-wide
 [changelog](../CHANGELOG.md) tracks the AI Passport project itself; this file
 follows the application's firmware versions.
 
+## 1.4.0 — 2026-10-29
+
+### Added
+
+- Match timer: Settings can set `off / 20 / 30 / 40 seconds per arrow` per group. After
+  Start there is a one-second pause, two beeps, a ten-second preparation (one beep at its
+  end), then a countdown of arrows × seconds per arrow. The last 30 seconds play a C-major
+  do-mi-sol arpeggio; three beeps at zero open the recording page.
+- A female voice counts the final ten seconds (ten to one), with its own Settings switch.
+- The group summary now shows a "Start next group" button, or "View summary" on the last
+  group.
+- The provisioning page can set the home title (1–8 characters); the default is 「射箭计分宝」.
+
+### Changed
+
+- Settings order is now target, orientation, brightness, off time, record X, group timer,
+  ten-second countdown voice, voice input, beep volume and Wi-Fi password storage.
+
 ## 1.3.6 — 2026-10-28
 
 ### Added

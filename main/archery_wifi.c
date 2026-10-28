@@ -6,6 +6,7 @@
 // - 口令存 NVS（命名空间 archery，键 w_ssid / w_pass），开机自动重连；
 // - 时间按 UTC+8 换算成本地墙上时间（2000 起算的秒），交给应用写 NVS。
 #include "archery_wifi.h"
+#include "archery_name.h"
 #include "archery_wifi_store.h"
 
 #include "archery_voice.h"
@@ -357,12 +358,20 @@ static const char *PROV_HTML =
     "<input id=token type=password placeholder='Access Token' autocapitalize=none"
     " autocorrect=off spellcheck=false autocomplete=off>"
     "<button onclick=saveCreds()>保存直连凭据</button>"
+    "<div class=muted style='margin-top:18px'>首页名称（1-8 个字符）</div>"
+    "<input id=name maxlength=8 placeholder='射箭计分宝' autocapitalize=none"
+    " autocorrect=off spellcheck=false autocomplete=off>"
+    "<button onclick=saveName()>保存首页名称</button>"
     "<div id=msg class=muted style='margin-top:12px'></div><script>"
     "let ssid=document.getElementById('ssid'),pass=document.getElementById('pass'),"
     "voice=document.getElementById('voice'),appid=document.getElementById('appid'),"
-    "token=document.getElementById('token'),msg=document.getElementById('msg');"
+    "token=document.getElementById('token'),nameInput=document.getElementById('name'),msg=document.getElementById('msg');"
     "fetch('/voice').then(r=>r.text()).then(t=>{voice.value=t});"
     "fetch('/voice-creds').then(r=>r.text()).then(t=>{appid.value=t});"
+    "fetch('/device-name').then(r=>r.text()).then(t=>{nameInput.value=t});"
+    "function saveName(){fetch('/device-name',{method:'POST',"
+    "headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'name='+encodeURIComponent(nameInput.value)})"
+    ".then(r=>r.text()).then(t=>{msg.textContent=t})}"
     "function saveCreds(){fetch('/voice-creds',{method:'POST',"
     "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
     "body:'appid='+encodeURIComponent(appid.value)+'&token='+encodeURIComponent(token.value)})"
@@ -612,6 +621,30 @@ static esp_err_t http_history_csv(httpd_req_t *req) {
     return ESP_OK;
 }
 
+static esp_err_t http_device_name_get(httpd_req_t *req) {
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    return httpd_resp_sendstr(req, archery_name_get());
+}
+
+static esp_err_t http_device_name_set(httpd_req_t *req) {
+    char body[128];
+    const int received = httpd_req_recv(req, body, sizeof(body) - 1);
+    if (received <= 0) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "no body");
+    body[received] = '\0';
+    const char *value = strstr(body, "name=");
+    if (!value) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "no name");
+    value += 5;
+    char name[64];
+    snprintf(name, sizeof(name), "%s", value);
+    url_decode(name);
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    if (!archery_name_valid(name, strlen(name))) {
+        return httpd_resp_sendstr(req, "名称需 1-8 个字符");
+    }
+    if (!archery_name_save(name)) return httpd_resp_sendstr(req, "保存失败");
+    return httpd_resp_sendstr(req, "已保存");
+}
+
 static void start_httpd(void) {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_uri_handlers = 16;
@@ -638,7 +671,13 @@ static void start_httpd(void) {
                                        .handler = http_voice_creds_get};
     const httpd_uri_t creds_set_uri = {.uri = "/voice-creds", .method = HTTP_POST,
                                        .handler = http_voice_creds_set};
+    const httpd_uri_t name_get_uri = {.uri = "/device-name", .method = HTTP_GET,
+                                       .handler = http_device_name_get};
+    const httpd_uri_t name_set_uri = {.uri = "/device-name", .method = HTTP_POST,
+                                       .handler = http_device_name_set};
     httpd_register_uri_handler(s_httpd, &index_uri);
+    httpd_register_uri_handler(s_httpd, &name_get_uri);
+    httpd_register_uri_handler(s_httpd, &name_set_uri);
     httpd_register_uri_handler(s_httpd, &scan_uri);
     httpd_register_uri_handler(s_httpd, &status_uri);
     httpd_register_uri_handler(s_httpd, &connect_uri);

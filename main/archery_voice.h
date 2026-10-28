@@ -54,6 +54,10 @@ void archery_voice_set_beep_volume(uint8_t percent);
 
 // 用当前音量响一声，供设置页试听；0 时为静音。
 void archery_voice_preview_beep(void);
+// 比赛计时剩 30 秒的特殊提示音（三声高频）。
+void archery_voice_beep_warning(void);
+// 播报倒计时数字（10..1），音频为预生成的豆包语音片段。
+void archery_voice_play_countdown(uint8_t number);
 
 // 识别完成的结果（消费一次）。
 bool archery_voice_take_result(archery_voice_result_t *out);

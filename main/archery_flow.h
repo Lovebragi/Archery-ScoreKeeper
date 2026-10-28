@@ -26,6 +26,7 @@ typedef enum {
     ARCHERY_PAGE_WIFI_PASSWORD,
     ARCHERY_PAGE_DIAG,
     ARCHERY_PAGE_DIAG_LOG,
+    ARCHERY_PAGE_TIMER,
 } archery_page_t;
 
 // 主页入口数：开始训练 / 历史记录 / 设置 / 联网。
@@ -79,6 +80,8 @@ typedef enum {
     ARCHERY_ACT_WIFI_STOP,         // 断开/停止配网
     ARCHERY_ACT_WIFI_LEAVE,        // 离开联网页：停止配网热点
     ARCHERY_ACT_WIFI_CONNECT_PASSWORD,  // 用设备上输入的密码连接（flow->wifi_password）
+    ARCHERY_ACT_TIMER_START,            // 进入计时页：上层启动 1 秒 + 10 秒准备 + 射击倒计时
+    ARCHERY_ACT_TIMER_STOP,             // 离开计时页：上层停止计时
 } archery_act_t;
 
 typedef struct {
@@ -94,6 +97,9 @@ typedef struct {
     uint8_t diag_row;
     uint8_t diag_log_row;
     uint8_t diag_log_count;
+    uint8_t timer_phase;      // 0 = 1 秒延迟，1 = 10 秒准备，2 = 射击倒计时
+    uint16_t timer_remaining; // 当前阶段剩余秒数
+    uint16_t timer_total;     // 射击阶段总秒数
     uint16_t history_cursor; // 0..count+1（count = 清空行，count+1 = 返回行）
     uint8_t history_filter; // archery_history_filter_t
     uint8_t detail_group;   // 历史详情当前查看的组
@@ -143,6 +149,9 @@ archery_act_t archery_flow_history_cycle_filter(archery_flow_t *flow);
 // 打开诊断页（主页长按确定 3 秒后调用）。
 void archery_flow_open_diag(archery_flow_t *flow);
 void archery_flow_set_log_count(archery_flow_t *flow, uint8_t count);
+
+// 计时结束或跳过：进入本组录入页。
+void archery_flow_enter_entry_from_timer(archery_flow_t *flow);
 
 // 当前时间（秒）由上层同步，供手动对时页初始化和"今天/最近 7 天"筛选使用。
 void archery_flow_set_clock(archery_flow_t *flow, uint32_t now, bool time_set);

@@ -473,23 +473,37 @@ static void test_settings_page(void) {
     assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.record_x == 0);
 
-    // 语音输入：默认开，切换为关
+    // 每组计时：默认关，调到 20 秒/支
     press(&flow, ARCHERY_KEY_OK);
     assert(flow.settings_row == 5);
+    assert(flow.settings.timer_seconds == 0);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(flow.settings.timer_seconds == 20);
+
+    // 倒数十秒语音：默认开，切换为关
+    press(&flow, ARCHERY_KEY_OK);
+    assert(flow.settings_row == 6);
+    assert(flow.settings.countdown_voice == 1);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(flow.settings.countdown_voice == 0);
+
+    // 语音输入：默认开，切换为关
+    press(&flow, ARCHERY_KEY_OK);
+    assert(flow.settings_row == 7);
     assert(flow.settings.voice_enabled == 1);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.voice_enabled == 0);
 
     // 提示音量：默认 60%，调到 80%
     press(&flow, ARCHERY_KEY_OK);
-    assert(flow.settings_row == 6);
+    assert(flow.settings_row == 8);
     assert(flow.settings.beep_volume == 3);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.beep_volume == 4);
 
-    // 保存 Wi-Fi 密码是最后一行；按确定保存并回主页
+    // 保存 Wi-Fi 密码是最后一行；再按确定离开设置并回主页
     press(&flow, ARCHERY_KEY_OK);
-    assert(flow.settings_row == 7);
+    assert(flow.settings_row == 9);
     assert(flow.settings.wifi_save == 1);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.wifi_save == 0);
@@ -753,6 +767,26 @@ static void test_wifi_password(void) {
     assert(flow.wifi_mode == 1);
 }
 
+static void test_timer_flow(void) {
+    archery_flow_t flow;
+    archery_flow_init(&flow);
+    flow.settings.timer_seconds = 20;
+    flow.page = ARCHERY_PAGE_SETUP;
+    flow.setup_row = 2;  // 单人靶的"开始"行
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_TIMER_START);
+    assert(flow.page == ARCHERY_PAGE_TIMER);
+    assert(flow.timer_phase == 0);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_TIMER_STOP);
+    assert(flow.page == ARCHERY_PAGE_ENTRY);
+
+    archery_flow_init(&flow);
+    flow.settings.timer_seconds = 0;
+    flow.page = ARCHERY_PAGE_SETUP;
+    flow.setup_row = 2;
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SESSION_START);
+    assert(flow.page == ARCHERY_PAGE_ENTRY);
+}
+
 static void test_diag_pages(void) {
     archery_flow_t flow;
     archery_flow_init(&flow);
@@ -784,6 +818,7 @@ int main(void) {
     test_history_pages();
     test_wifi_page();
     test_wifi_password();
+    test_timer_flow();
     test_diag_pages();
     puts("archery flow state-machine tests: PASS");
     return 0;

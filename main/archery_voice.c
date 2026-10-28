@@ -1,5 +1,6 @@
 // main/archery_voice.c —— 实验：PTT 报靶语音上传与结果解析。
 #include "archery_voice.h"
+#include "archery_countdown_pcm.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -498,6 +499,53 @@ static void prewarm_task(void *arg) {
 
 void archery_voice_set_beep_volume(uint8_t percent) {
     s_beep_volume = percent > 100 ? 100 : percent;
+}
+
+static const int16_t *countdown_clip(uint8_t number, unsigned *samples) {
+    switch (number) {
+    case 1: *samples = countdown_1_samples; return countdown_1;
+    case 2: *samples = countdown_2_samples; return countdown_2;
+    case 3: *samples = countdown_3_samples; return countdown_3;
+    case 4: *samples = countdown_4_samples; return countdown_4;
+    case 5: *samples = countdown_5_samples; return countdown_5;
+    case 6: *samples = countdown_6_samples; return countdown_6;
+    case 7: *samples = countdown_7_samples; return countdown_7;
+    case 8: *samples = countdown_8_samples; return countdown_8;
+    case 9: *samples = countdown_9_samples; return countdown_9;
+    case 10: *samples = countdown_10_samples; return countdown_10;
+    default: *samples = 0; return NULL;
+    }
+}
+
+void archery_voice_play_countdown(uint8_t number) {
+    if (s_active || s_beep_volume == 0) return;
+    unsigned samples = 0;
+    const int16_t *clip = countdown_clip(number, &samples);
+    if (!clip || samples == 0) return;
+    if (!s_audio_ready) {
+        if (bsp_audio_init() != ESP_OK || bsp_audio_set_format(16000, 16, 1) != ESP_OK) {
+            return;
+        }
+        s_audio_ready = true;
+    }
+    bsp_audio_set_volume(s_beep_volume);
+    (void)bsp_audio_write(clip, (size_t)samples * sizeof(clip[0]));
+}
+
+void archery_voice_beep_warning(void) {
+    if (s_active || s_beep_volume == 0) return;
+    if (!s_audio_ready) {
+        if (bsp_audio_init() != ESP_OK || bsp_audio_set_format(16000, 16, 1) != ESP_OK) {
+            return;
+        }
+        s_audio_ready = true;
+    }
+    // C 大调 do-mi-sol 上行琶音。
+    play_tone(523, 120, 1, 0);
+    vTaskDelay(pdMS_TO_TICKS(80));
+    play_tone(659, 120, 1, 0);
+    vTaskDelay(pdMS_TO_TICKS(80));
+    play_tone(784, 160, 1, 0);
 }
 
 void archery_voice_preview_beep(void) {

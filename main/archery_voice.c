@@ -108,7 +108,7 @@ esp_err_t archery_voice_save_url(const char *url) {
     return err;
 }
 
-bool archery_voice_enabled(void) { return s_url[0] != '\0'; }
+bool archery_voice_enabled(void) { return s_url[0] != '\0' || (s_appid[0] && s_token[0]); }
 const char *archery_voice_url(void) { return s_url; }
 bool archery_voice_active(void) { return s_active; }
 const char *archery_voice_status(void) { return s_status; }

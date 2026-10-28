@@ -21,6 +21,8 @@
 #include "nvs.h"
 #include "archery_qr.h"
 #include "archery_version.h"
+#include "archery_voice.h"
+#include "archery_ws_client.h"
 #include "archery_wifi_view.h"
 #include "bsp_pins.h"
 #include "bsp_display.h"
@@ -942,7 +944,7 @@ static void render_diag(lv_obj_t *scr, const archery_flow_t *flow,
     add_title(scr, "诊断");
     static const char *names[ARCHERY_DIAG_ROWS] = {
         "Wi-Fi", "SSID", "信号", "蓝牙", "空闲内存", "内存最低",
-        "最大块", "LVGL", "NVS", "历史记录", "电量", "复位/运行",
+        "最大块", "LVGL", "NVS", "历史记录", "电量", "复位/运行", "语音服务",
     };
     const uint8_t visible = 6;
     uint8_t offset = flow->diag_row >= visible ? (uint8_t)(flow->diag_row - visible + 1u) : 0u;
@@ -1023,13 +1025,29 @@ static void render_diag(lv_obj_t *scr, const archery_flow_t *flow,
         case 10:
             snprintf(value, sizeof(value), "%d%%", battery_soc);
             break;
-        default: {
+        case 11: {
             const int64_t seconds = esp_timer_get_time() / 1000000;
             snprintf(value, sizeof(value), "%s %u:%02u",
                      diag_reset_text(esp_reset_reason()), (unsigned)(seconds / 60),
                      (unsigned)(seconds % 60));
             break;
         }
+        default:
+            if (archery_voice_has_credentials()) {
+                const int result = archery_ws_last_open_result();
+                if (result == 1) {
+                    snprintf(value, sizeof(value), "已连接");
+                } else if (result == 0) {
+                    snprintf(value, sizeof(value), "失败 %d", archery_ws_last_status());
+                } else {
+                    snprintf(value, sizeof(value), "待测试");
+                }
+            } else if (archery_voice_url()[0]) {
+                snprintf(value, sizeof(value), "代理");
+            } else {
+                snprintf(value, sizeof(value), "未配置");
+            }
+            break;
         }
         lv_obj_t *number = make_label(card, value, ARCHERY_FONT_BODY,
                                       selected ? C_GOLD : C_TEXT);

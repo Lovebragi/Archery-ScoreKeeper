@@ -19,3 +19,5 @@ bool archery_ws_connected(void);
 
 // 最近一次打开失败时的 HTTP 状态码（401/403 表示凭据无效），0 表示未知。
 int archery_ws_last_status(void);
+// -1 未尝试，1 成功，0 失败
+int archery_ws_last_open_result(void);

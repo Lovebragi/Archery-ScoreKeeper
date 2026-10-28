@@ -40,7 +40,7 @@ typedef enum {
 #define ARCHERY_SETUP_ROWS_MAX 6u
 // 手动对时页的字段数：年 / 月 / 日 / 时 / 分。
 #define ARCHERY_CLOCK_ROWS 5u
-#define ARCHERY_DIAG_ROWS 12u
+#define ARCHERY_DIAG_ROWS 13u
 
 typedef enum {
     ARCHERY_KEY_UP = 0,

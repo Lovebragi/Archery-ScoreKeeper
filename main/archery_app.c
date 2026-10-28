@@ -442,7 +442,7 @@ static void handle_key(archery_key_t key) {
         break;
     case ARCHERY_ACT_SETTINGS_CHANGED:
         apply_settings(&s_flow.settings);
-        if (s_flow.settings_row == 6) archery_voice_preview_beep();
+        if (s_flow.settings_row == ARCHERY_SETTINGS_ROWS - 2u) archery_voice_preview_beep();
         break;
     case ARCHERY_ACT_SETTINGS_SAVE:
         apply_settings(&s_flow.settings);
@@ -595,7 +595,8 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t event, void *user) {
             (void)esp_timer_start_once(s_ptt_timer, 200000);
         }
         if ((pressed == ARCHERY_KEY_UP || pressed == ARCHERY_KEY_DOWN) &&
-            (s_flow.page == ARCHERY_PAGE_HISTORY || s_flow.page == ARCHERY_PAGE_DIAG_LOG) &&
+            (s_flow.page == ARCHERY_PAGE_HISTORY || s_flow.page == ARCHERY_PAGE_DIAG ||
+             s_flow.page == ARCHERY_PAGE_DIAG_LOG) &&
             s_repeat_timer) {
             s_repeat_key = pressed;
             s_repeat_active = true;

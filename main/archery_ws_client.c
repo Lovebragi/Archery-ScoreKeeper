@@ -20,6 +20,9 @@ static const char *TAG = "ws_client";
 static esp_tls_t *s_tls;
 static uint8_t s_frame[FRAME_BUF];
 static int s_last_status;
+static int s_last_open_result = -1;
+
+int archery_ws_last_open_result(void) { return s_last_open_result; }
 
 int archery_ws_last_status(void) { return s_last_status; }
 
@@ -244,9 +247,11 @@ bool archery_ws_open(const char *appid, const char *token) {
         return false;
     }
     if (!send_init()) {
+        s_last_open_result = 0;
         archery_ws_close();
         return false;
     }
+    s_last_open_result = 1;
     // 消费 init 回应，避免它被当成识别结果。
     uint8_t opcode = 0;
     (void)ws_read_frame(s_frame, sizeof(s_frame), &opcode);

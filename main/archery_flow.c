@@ -712,10 +712,12 @@ static archery_act_t handle_timer(archery_flow_t *flow, archery_key_t key) {
 static archery_act_t handle_diag(archery_flow_t *flow, archery_key_t key) {
     switch (key) {
     case ARCHERY_KEY_UP:
-        if (flow->diag_row > 0) flow->diag_row--;
+        flow->diag_row = flow->diag_row == 0 ? (uint8_t)(ARCHERY_DIAG_ROWS - 1u)
+                                             : (uint8_t)(flow->diag_row - 1u);
         break;
     case ARCHERY_KEY_DOWN:
-        if (flow->diag_row + 1u < ARCHERY_DIAG_ROWS) flow->diag_row++;
+        flow->diag_row = flow->diag_row + 1u >= ARCHERY_DIAG_ROWS
+                             ? 0u : (uint8_t)(flow->diag_row + 1u);
         break;
     case ARCHERY_KEY_OK:
         flow->diag_log_row = 0;

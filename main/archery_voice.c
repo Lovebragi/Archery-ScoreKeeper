@@ -41,6 +41,7 @@ static char s_target_name[8] = "half";
 static uint8_t s_target = 0;
 static uint8_t s_arrows = 6;
 static char s_appid[32];
+static char s_api_key[192];
 static char s_token[96];
 static uint8_t s_beep_volume = 60;
 static bool s_audio_ready;
@@ -108,7 +109,7 @@ esp_err_t archery_voice_save_url(const char *url) {
     return err;
 }
 
-bool archery_voice_enabled(void) { return s_url[0] != '\0' || (s_appid[0] && s_token[0]); }
+bool archery_voice_enabled(void) { return s_url[0] != '\0' || s_api_key[0] || (s_appid[0] && s_token[0]); }
 const char *archery_voice_url(void) { return s_url; }
 bool archery_voice_active(void) { return s_active; }
 const char *archery_voice_status(void) { return s_status; }
@@ -140,8 +141,33 @@ void archery_voice_set_context(uint8_t target, uint8_t arrows) {
 uint8_t archery_voice_context_target(void) { return s_target; }
 uint8_t archery_voice_context_arrows(void) { return s_arrows; }
 const char *archery_voice_appid(void) { return s_appid; }
+const char *archery_voice_api_key(void) { return s_api_key; }
+
+esp_err_t archery_voice_save_api_key(const char *api_key) {
+    if (!api_key) return ESP_ERR_INVALID_ARG;
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(VOICE_NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) return err;
+    err = nvs_set_str(handle, "api_key", api_key);
+    if (err == ESP_OK) err = nvs_commit(handle);
+    if (err == ESP_OK) {
+        (void)nvs_erase_key(handle, "appid");
+        (void)nvs_erase_key(handle, "token");
+        (void)nvs_erase_key(handle, VOICE_NVS_KEY);
+        (void)nvs_commit(handle);
+        s_appid[0] = '\0';
+        s_token[0] = '\0';
+        s_url[0] = '\0';
+    }
+    nvs_close(handle);
+    if (err == ESP_OK) {
+        strncpy(s_api_key, api_key, sizeof(s_api_key) - 1);
+        s_api_key[sizeof(s_api_key) - 1] = '\0';
+    }
+    return err;
+}
 const char *archery_voice_token(void) { return s_token; }
-bool archery_voice_has_credentials(void) { return s_appid[0] && s_token[0]; }
+bool archery_voice_has_credentials(void) { return s_api_key[0] || (s_appid[0] && s_token[0]); }
 
 esp_err_t archery_voice_save_credentials(const char *appid, const char *token) {
     if (!appid || !token) return ESP_ERR_INVALID_ARG;
@@ -169,6 +195,8 @@ static void load_credentials(void) {
     if (nvs_get_str(handle, "appid", s_appid, &length) != ESP_OK) s_appid[0] = '\0';
     length = sizeof(s_token);
     if (nvs_get_str(handle, "token", s_token, &length) != ESP_OK) s_token[0] = '\0';
+    length = sizeof(s_api_key);
+    if (nvs_get_str(handle, "api_key", s_api_key, &length) != ESP_OK) s_api_key[0] = '\0';
     nvs_close(handle);
 }
 
@@ -305,7 +333,7 @@ static const char *open_failure_status(void) {
 
 static void run_ws_session(void) {
     if (!archery_ws_connected()) {
-        if (!archery_ws_open(s_appid, s_token)) {
+        if (!archery_ws_open(s_appid, s_token, s_api_key)) {
             archery_voice_set_status(open_failure_status());
             play_tone(600, 150, 2, 100);
             s_result_ready = true;
@@ -319,7 +347,7 @@ static void run_ws_session(void) {
     int16_t probe[160] = {0};
     if (!archery_ws_send_audio(probe, 160, false)) {
         archery_ws_close();
-        if (!archery_ws_open(s_appid, s_token)) {
+        if (!archery_ws_open(s_appid, s_token, s_api_key)) {
             archery_voice_set_status(open_failure_status());
             play_tone(600, 150, 2, 100);
             s_result_ready = true;
@@ -338,7 +366,8 @@ static void run_ws_session(void) {
 
     char text[256] = {0};
     char latest[256] = {0};
-    for (int i = 0; i < 40; i++) {
+    const int64_t wait_started = esp_timer_get_time();
+    for (int i = 0; i < 300 && (esp_timer_get_time() - wait_started) / 1000 < 1000; i++) {
         const bool last = archery_ws_read(text, sizeof(text));
         if (text[0]) {
             strncpy(latest, text, sizeof(latest) - 1);
@@ -351,7 +380,13 @@ static void run_ws_session(void) {
 
     archery_speech_result_t parsed;
     archery_speech_parse(latest, s_target, s_arrows, &parsed);
-    ESP_LOGI(TAG, "asr=%s target=%u ok=%d", latest, (unsigned)s_target, (int)parsed.ok);
+    const int ws_err = archery_ws_last_error_code();
+    if (ws_err && ws_err != 45000081) {
+        ESP_LOGI(TAG, "asr=%s target=%u ok=%d ws_err=%d %s", latest, (unsigned)s_target,
+                 (int)parsed.ok, ws_err, archery_ws_last_error_msg());
+    } else {
+        ESP_LOGI(TAG, "asr=%s target=%u ok=%d", latest, (unsigned)s_target, (int)parsed.ok);
+    }
     memset(&s_result, 0, sizeof(s_result));
     if (parsed.ok) {
         s_result.ok = true;
@@ -490,7 +525,7 @@ esp_err_t archery_voice_init(void) {
 static void prewarm_task(void *arg) {
     (void)arg;
     if (!archery_ws_connected() && archery_voice_has_credentials() && !s_active) {
-        if (archery_ws_open(s_appid, s_token)) {
+        if (archery_ws_open(s_appid, s_token, s_api_key)) {
             archery_voice_set_status("语音就绪");
         }
     }
@@ -566,7 +601,9 @@ void archery_voice_prewarm(void) {
 
 esp_err_t archery_voice_start(void) {
     if (!archery_voice_enabled()) return ESP_ERR_INVALID_STATE;
-    if (!parse_url(s_url, &s_endpoint)) return ESP_ERR_INVALID_ARG;
+    if (!archery_voice_has_credentials() && !parse_url(s_url, &s_endpoint)) {
+        return ESP_ERR_INVALID_ARG;
+    }
     if (s_active) return ESP_ERR_INVALID_STATE;
     xSemaphoreGive(s_start_sem);
     return ESP_OK;

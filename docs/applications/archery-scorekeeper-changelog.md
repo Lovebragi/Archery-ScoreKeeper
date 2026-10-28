@@ -8,6 +8,18 @@ Release history for the archery scorekeeper application. The repository-wide
 [changelog](../CHANGELOG.md) tracks the AI Passport project itself; this file
 follows the application's firmware versions.
 
+## 1.4.1 — 2026-10-30
+
+### Added
+
+- Voice now connects directly with the new-console **API Key**; the provisioning page only asks for the API Key. Legacy AppID/Access Token fields and the LAN proxy entry were removed.
+
+### Fixed
+
+- Empty ASR text: the final packet now uses a negative sequence, and gzip responses are decompressed.
+- Long hang after release: TLS read timeout reduced from 15 s to 500 ms, with a 1 s overall wait cap.
+- Chinese text truncated to question marks in diagnostics/logs; truncation now respects UTF-8 boundaries.
+
 ## 1.4.0 鈥?2026-10-29
 
 ### Added

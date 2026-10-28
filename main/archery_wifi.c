@@ -348,38 +348,24 @@ static const char *PROV_HTML =
     "<input id=pass type=password placeholder='Wi-Fi 密码' autocapitalize=none"
     " autocorrect=off spellcheck=false autocomplete=off>"
     "<button onclick=go()>连接</button>"
-    "<div class=muted style='margin-top:18px'>语音服务地址（局域网代理，可留空）</div>"
-    "<input id=voice placeholder='http://192.168.1.10:8765/asr' autocapitalize=none"
+    "<div class=muted style='margin-top:18px'>豆包 API Key（新版控制台）</div>"
+    "<input id=apikey type=password placeholder='API Key' autocapitalize=none"
     " autocorrect=off spellcheck=false autocomplete=off>"
-    "<button onclick=saveVoice()>保存语音地址</button>"
-    "<div class=muted style='margin-top:18px'>豆包直连凭据（AppID + Access Token，可留空）</div>"
-    "<input id=appid placeholder='AppID' autocapitalize=none autocorrect=off"
-    " spellcheck=false autocomplete=off>"
-    "<input id=token type=password placeholder='Access Token' autocapitalize=none"
-    " autocorrect=off spellcheck=false autocomplete=off>"
-    "<button onclick=saveCreds()>保存直连凭据</button>"
+    "<button onclick=saveApiKey()>保存 API Key</button>"
     "<div class=muted style='margin-top:18px'>首页名称（1-8 个字符）</div>"
     "<input id=name maxlength=8 placeholder='射箭计分宝' autocapitalize=none"
     " autocorrect=off spellcheck=false autocomplete=off>"
     "<button onclick=saveName()>保存首页名称</button>"
     "<div id=msg class=muted style='margin-top:12px'></div><script>"
     "let ssid=document.getElementById('ssid'),pass=document.getElementById('pass'),"
-    "voice=document.getElementById('voice'),appid=document.getElementById('appid'),"
-    "token=document.getElementById('token'),nameInput=document.getElementById('name'),msg=document.getElementById('msg');"
-    "fetch('/voice').then(r=>r.text()).then(t=>{voice.value=t});"
-    "fetch('/voice-creds').then(r=>r.text()).then(t=>{appid.value=t});"
+    "nameInput=document.getElementById('name'),msg=document.getElementById('msg');"
     "fetch('/device-name').then(r=>r.text()).then(t=>{nameInput.value=t});"
     "function saveName(){fetch('/device-name',{method:'POST',"
     "headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'name='+encodeURIComponent(nameInput.value)})"
     ".then(r=>r.text()).then(t=>{msg.textContent=t})}"
-    "function saveCreds(){fetch('/voice-creds',{method:'POST',"
-    "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
-    "body:'appid='+encodeURIComponent(appid.value)+'&token='+encodeURIComponent(token.value)})"
-    ".then(r=>r.text()).then(t=>{msg.textContent=t;token.value=''})}"
-    "function saveVoice(){fetch('/voice-url',{method:'POST',"
-    "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
-    "body:'url='+encodeURIComponent(voice.value)}).then(r=>r.text())"
-    ".then(t=>{msg.textContent=t})}"
+    "function saveApiKey(){const k=document.getElementById('apikey');"
+    "fetch('/voice-api-key',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'key='+encodeURIComponent(k.value)})"
+    ".then(r=>r.text()).then(t=>{msg.textContent=t;k.value=''})}"
     "function scan(force){let ctrl=new AbortController();let t=setTimeout(()=>ctrl.abort(),6000);"
     "fetch('/scan'+(force?'?force=1':''),{signal:ctrl.signal}).then(r=>r.json()).then(a=>{clearTimeout(t);"
     "let l=document.getElementById('list');l.innerHTML='';"
@@ -539,6 +525,19 @@ static esp_err_t http_voice_set(httpd_req_t *req) {
     return httpd_resp_sendstr(req, url[0] ? "已保存语音地址" : "语音地址已清空");
 }
 
+static esp_err_t http_voice_api_key_set(httpd_req_t *req) {
+    char body[256];
+    const int received = httpd_req_recv(req, body, sizeof(body) - 1);
+    if (received <= 0) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "no body");
+    body[received] = '\0';
+    char *k = strstr(body, "key=");
+    if (!k) return httpd_resp_sendstr(req, "缺少 key");
+    k += 4;
+    url_decode(k);
+    const esp_err_t err = archery_voice_save_api_key(k);
+    return httpd_resp_sendstr(req, err == ESP_OK ? "API Key 已保存" : "保存失败");
+}
+
 static esp_err_t http_voice_creds_get(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/plain; charset=utf-8");
     return httpd_resp_sendstr(req, archery_voice_appid());
@@ -671,6 +670,8 @@ static void start_httpd(void) {
                                        .handler = http_voice_creds_get};
     const httpd_uri_t creds_set_uri = {.uri = "/voice-creds", .method = HTTP_POST,
                                        .handler = http_voice_creds_set};
+    const httpd_uri_t api_key_uri = {.uri = "/voice-api-key", .method = HTTP_POST,
+                                     .handler = http_voice_api_key_set};
     const httpd_uri_t name_get_uri = {.uri = "/device-name", .method = HTTP_GET,
                                        .handler = http_device_name_get};
     const httpd_uri_t name_set_uri = {.uri = "/device-name", .method = HTTP_POST,
@@ -687,6 +688,7 @@ static void start_httpd(void) {
     httpd_register_uri_handler(s_httpd, &voice_set_uri);
     httpd_register_uri_handler(s_httpd, &creds_get_uri);
     httpd_register_uri_handler(s_httpd, &creds_set_uri);
+    httpd_register_uri_handler(s_httpd, &api_key_uri);
     // iOS/Android 的联网探测：跳转到配网页，手机才会自动弹出登录页。
     static const char *probe_paths[] = {"/hotspot-detect.html", "/generate_204",
                                         "/connecttest.txt", "/ncsi.txt"};

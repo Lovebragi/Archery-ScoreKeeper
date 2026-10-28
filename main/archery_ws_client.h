@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 // 建立 TLS + WebSocket 连接并发送初始化包；appid/token 由 NVS 提供。
-bool archery_ws_open(const char *appid, const char *token);
+bool archery_ws_open(const char *appid, const char *token, const char *api_key);
 
 // 发送一帧 PCM（16 kHz/16 bit/单声道），last 表示最后一块。
 bool archery_ws_send_audio(const int16_t *pcm, size_t samples, bool last);
@@ -19,5 +19,7 @@ bool archery_ws_connected(void);
 
 // 最近一次打开失败时的 HTTP 状态码（401/403 表示凭据无效），0 表示未知。
 int archery_ws_last_status(void);
+int archery_ws_last_error_code(void);
+const char *archery_ws_last_error_msg(void);
 // -1 未尝试，1 成功，0 失败
 int archery_ws_last_open_result(void);

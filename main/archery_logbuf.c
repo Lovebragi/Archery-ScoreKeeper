@@ -28,8 +28,11 @@ static int log_sink(const char *format, va_list args) {
     }
     if (length > 0 && s_lock) {
         xSemaphoreTake(s_lock, portMAX_DELAY);
-        strncpy(s_lines[s_head], line, ARCHERY_LOG_LINE_CHARS - 1);
-        s_lines[s_head][ARCHERY_LOG_LINE_CHARS - 1] = '\0';
+        size_t keep = strlen(line);
+        if (keep > ARCHERY_LOG_LINE_CHARS - 1u) keep = ARCHERY_LOG_LINE_CHARS - 1u;
+        while (keep > 0 && ((unsigned char)line[keep] & 0xC0u) == 0x80u) keep--;
+        memcpy(s_lines[s_head], line, keep);
+        s_lines[s_head][keep] = '\0';
         s_head = (s_head + 1u) % ARCHERY_LOG_LINES;
         if (s_count < ARCHERY_LOG_LINES) s_count++;
         xSemaphoreGive(s_lock);

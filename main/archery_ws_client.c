@@ -1,5 +1,8 @@
 // main/archery_ws_client.c —— 豆包流式识别（WSS）客户端实现。
 #include "archery_ws_client.h"
+#include "miniz.h"
+#include <sys/socket.h>
+#include <sys/time.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -21,8 +24,13 @@ static esp_tls_t *s_tls;
 static uint8_t s_frame[FRAME_BUF];
 static int s_last_status;
 static int s_last_open_result = -1;
+static int s_last_error_code;
+static char s_last_error_msg[96];
 
 int archery_ws_last_open_result(void) { return s_last_open_result; }
+
+int archery_ws_last_error_code(void) { return s_last_error_code; }
+const char *archery_ws_last_error_msg(void) { return s_last_error_msg; }
 
 int archery_ws_last_status(void) { return s_last_status; }
 
@@ -127,12 +135,32 @@ static int ws_read_frame(uint8_t *out, size_t cap, uint8_t *opcode) {
     return (int)length;
 }
 
+static char s_json[8192];
+
+static bool gunzip(const uint8_t *in, size_t in_len, char *out, size_t cap) {
+    // gzip: 10-byte header, raw deflate, 8-byte trailer. ROM miniz exposes tinfl.
+    if (in_len < 18 || in[0] != 0x1F || in[1] != 0x8B) return false;
+    const size_t written = tinfl_decompress_mem_to_mem(
+        out, cap - 1, in + 10, in_len - 18, 0);
+    if (written == 0 || written == (size_t)-1) return false;
+    out[written] = '\0';
+    return true;
+}
+
 static bool handle_frame(const uint8_t *payload, int length, char *text, size_t cap) {
     if (length < 8) return false;
+    const uint8_t type = payload[1] >> 4;
     const uint8_t flags = payload[1] & 0x0F;
     int offset = 4;
     if (flags & 0x01) offset += 4;
+    if (flags & 0x04) offset += 4;
     if (length < offset + 4) return false;
+    if (type == 0x0F) {
+        s_last_error_code = (int)((uint32_t)payload[offset] << 24 |
+                                  (uint32_t)payload[offset + 1] << 16 |
+                                  (uint32_t)payload[offset + 2] << 8 | payload[offset + 3]);
+        offset += 4;
+    }
     const uint32_t size = ((uint32_t)payload[offset] << 24) |
                           ((uint32_t)payload[offset + 1] << 16) |
                           ((uint32_t)payload[offset + 2] << 8) | payload[offset + 3];
@@ -141,6 +169,10 @@ static bool handle_frame(const uint8_t *payload, int length, char *text, size_t 
     if (size < available) available = size;
     text[0] = '\0';
     const char *begin = (const char *)payload + offset;
+    if (type == 0x0F) {
+        snprintf(s_last_error_msg, sizeof(s_last_error_msg), "%.*s", (int)(available < 90 ? available : 90), begin);
+        return true;
+    }
     const char *end = begin + available;
     const char *key = strstr(begin, "\"text\"");
     if (key && key < end) {
@@ -194,12 +226,14 @@ static bool send_init(void) {
 
 bool archery_ws_connected(void) { return s_tls != NULL; }
 
-bool archery_ws_open(const char *appid, const char *token) {
+bool archery_ws_open(const char *appid, const char *token, const char *api_key) {
     archery_ws_close();
     s_last_status = 0;
+    s_last_error_code = 0;
+    s_last_error_msg[0] = '\0';
     esp_tls_cfg_t cfg = {
         .crt_bundle_attach = esp_crt_bundle_attach,
-        .timeout_ms = 15000,
+        .timeout_ms = 500,
     };
     s_tls = esp_tls_init();
     if (!s_tls) return false;
@@ -216,15 +250,29 @@ bool archery_ws_open(const char *appid, const char *token) {
         archery_ws_close();
         return false;
     }
-    char request[768];
-    const int request_len = snprintf(
-        request, sizeof(request),
-        "GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-        "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n"
-        "X-Api-App-Key: %s\r\nX-Api-Access-Key: %s\r\n"
-        "X-Api-Resource-Id: %s\r\nX-Api-Request-Id: req-%08x%08x\r\n\r\n",
-        WS_PATH, WS_HOST, key, appid, token, WS_RESOURCE, (unsigned)esp_random(),
-        (unsigned)esp_random());
+    char request[1024];
+    int request_len;
+    if (api_key && api_key[0]) {
+        request_len = snprintf(
+            request, sizeof(request),
+            "GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+            "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n"
+            "X-Api-Key: %s\r\nX-Api-Resource-Id: %s\r\n"
+            "X-Api-Connect-Id: conn-%08x%08x\r\n"
+            "X-Api-Request-Id: req-%08x%08x\r\n\r\n",
+            WS_PATH, WS_HOST, key, api_key, WS_RESOURCE, (unsigned)esp_random(),
+            (unsigned)esp_random(), (unsigned)esp_random(), (unsigned)esp_random());
+    } else {
+        request_len = snprintf(
+            request, sizeof(request),
+            "GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+            "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n"
+            "X-Api-App-Key: %s\r\nX-Api-Access-Key: %s\r\n"
+            "X-Api-Resource-Id: %s\r\nX-Api-Connect-Id: conn-%08x%08x\r\n"
+            "X-Api-Request-Id: req-%08x%08x\r\n\r\n",
+            WS_PATH, WS_HOST, key, appid, token, WS_RESOURCE, (unsigned)esp_random(),
+            (unsigned)esp_random(), (unsigned)esp_random(), (unsigned)esp_random());
+    }
     if (!write_all(request, (size_t)request_len)) {
         archery_ws_close();
         return false;
@@ -245,6 +293,11 @@ bool archery_ws_open(const char *appid, const char *token) {
         ESP_LOGE(TAG, "handshake failed: %.40s", response);
         archery_ws_close();
         return false;
+    }
+    int fd = -1;
+    if (esp_tls_get_conn_sockfd(s_tls, &fd) == ESP_OK && fd >= 0) {
+        struct timeval tv = {.tv_sec = 0, .tv_usec = 500000};
+        (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     }
     if (!send_init()) {
         s_last_open_result = 0;

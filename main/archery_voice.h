@@ -43,6 +43,8 @@ uint8_t archery_voice_context_arrows(void);
 // 直连豆包流式识别所需的凭据（AppID + Access Token），存 NVS。
 esp_err_t archery_voice_save_credentials(const char *appid, const char *token);
 const char *archery_voice_appid(void);
+const char *archery_voice_api_key(void);
+esp_err_t archery_voice_save_api_key(const char *api_key);
 const char *archery_voice_token(void);
 bool archery_voice_has_credentials(void);
 

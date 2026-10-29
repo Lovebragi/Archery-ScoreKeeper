@@ -436,6 +436,10 @@ static void test_settings_page(void) {
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.target == ARCHERY_TARGET_FULL_40);
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(flow.settings.target == ARCHERY_TARGET_FULL_80);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(flow.settings.target == ARCHERY_TARGET_FULL_122);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.target == ARCHERY_TARGET_HALF_40);
 
     // 上下只移动选中行，并在首尾循环

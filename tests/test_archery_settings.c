@@ -108,12 +108,16 @@ static void test_adjust(void) {
     assert(archery_settings_adjust(&settings, 5, -1));
     assert(settings.timer_seconds == 30);
 
-    // 倒数十秒语音：默认开，任一方向切换
-    assert(settings.countdown_voice == 1);
+    // 倒数十秒语音：豆包 -> 关 -> 系统 -> 小豆 -> 豆包
+    assert(settings.countdown_voice == 3);
     assert(archery_settings_adjust(&settings, 6, 1));
     assert(settings.countdown_voice == 0);
-    assert(archery_settings_adjust(&settings, 6, -1));
+    assert(archery_settings_adjust(&settings, 6, 1));
     assert(settings.countdown_voice == 1);
+    assert(archery_settings_adjust(&settings, 6, 1));
+    assert(settings.countdown_voice == 2);
+    assert(archery_settings_adjust(&settings, 6, 1));
+    assert(settings.countdown_voice == 3);
 
     // 语音输入：默认开，任一方向切换
     assert(archery_settings_adjust(&settings, 7, 1));
@@ -121,25 +125,32 @@ static void test_adjust(void) {
     assert(archery_settings_adjust(&settings, 7, -1));
     assert(settings.voice_enabled == 1);
 
+    // 滚动录入：默认关，任一方向切换
+    assert(settings.roll_entry == 0);
+    assert(archery_settings_adjust(&settings, 8, 1));
+    assert(settings.roll_entry == 1);
+    assert(archery_settings_adjust(&settings, 8, -1));
+    assert(settings.roll_entry == 0);
+
     // 提示音量：默认 60%（档位 3），可到 0（静音）和 5（100%）
     assert(settings.beep_volume == 3);
-    assert(archery_settings_adjust(&settings, 8, 1));
+    assert(archery_settings_adjust(&settings, 9, 1));
     assert(settings.beep_volume == 4);
-    assert(archery_settings_adjust(&settings, 8, -4));
+    assert(archery_settings_adjust(&settings, 9, -4));
     assert(settings.beep_volume == 0);
-    assert(!archery_settings_adjust(&settings, 8, -1));
-    assert(archery_settings_adjust(&settings, 8, 1));
+    assert(!archery_settings_adjust(&settings, 9, -1));
+    assert(archery_settings_adjust(&settings, 9, 1));
     assert(settings.beep_volume == 1);
 
     // 保存 Wi-Fi 密码：默认开，任一方向切换
     assert(settings.wifi_save == 1);
-    assert(archery_settings_adjust(&settings, 9, 1));
+    assert(archery_settings_adjust(&settings, 10, 1));
     assert(settings.wifi_save == 0);
-    assert(archery_settings_adjust(&settings, 9, -1));
+    assert(archery_settings_adjust(&settings, 10, -1));
     assert(settings.wifi_save == 1);
 
     // 非法行（没有第 9 行）
-    assert(!archery_settings_adjust(&settings, 10, 1));
+    assert(!archery_settings_adjust(&settings, 11, 1));
     assert(!archery_settings_adjust(NULL, 0, 1));
 }
 

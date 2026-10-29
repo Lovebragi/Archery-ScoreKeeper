@@ -53,25 +53,25 @@ follows the application's firmware versions.
 - Long hang after release: TLS read timeout reduced from 15 s to 500 ms, with a 1 s overall wait cap.
 - Chinese text truncated to question marks in diagnostics/logs; truncation now respects UTF-8 boundaries.
 
-## 1.4.0 鈥?2026-10-29
+## 1.4.0 —2026-10-29
 
 ### Added
 
 - Match timer: Settings can set `off / 20 / 30 / 40 seconds per arrow` per group. After
   Start there is a one-second pause, two beeps, a ten-second preparation (one beep at its
-  end), then a countdown of arrows 脳 seconds per arrow. The last 30 seconds play a C-major
+  end), then a countdown of arrows × seconds per arrow. The last 30 seconds play a C-major
   do-mi-sol arpeggio; three beeps at zero open the recording page.
 - A female voice counts the final ten seconds (ten to one), with its own Settings switch.
 - The group summary now shows a "Start next group" button, or "View summary" on the last
   group.
-- The provisioning page can set the home title (1鈥? characters); the default is 銆屽皠绠鍒嗗疂銆?
+- The provisioning page can set the home title (1-8 characters); the default is the built-in archery title.
 
 ### Changed
 
 - Settings order is now target, orientation, brightness, off time, record X, group timer,
   ten-second countdown voice, voice input, beep volume and Wi-Fi password storage.
 
-## 1.3.6 鈥?2026-10-28
+## 1.3.6 —2026-10-28
 
 ### Added
 
@@ -91,7 +91,7 @@ follows the application's firmware versions.
 - The status bar no longer draws a grey line or red cross when disconnected; it
   only shows the four green signal dashes while connected.
 
-## 1.3.5 鈥?2026-10-28
+## 1.3.5 —2026-10-28
 
 ### Fixed
 
@@ -111,7 +111,7 @@ follows the application's firmware versions.
 - The key that wakes the device is still swallowed until release, so it cannot
   trigger an action.
 
-## 1.3.4 鈥?2026-10-27
+## 1.3.4 —2026-10-27
 
 ### Changed
 
@@ -128,7 +128,7 @@ follows the application's firmware versions.
 - Recognition logs now include the target id to help diagnose low rings on full
   targets; host tests cover full-target rings 5 to 1.
 
-## 1.3.3 鈥?2026-10-27
+## 1.3.3 —2026-10-27
 
 ### Changed
 
@@ -138,7 +138,7 @@ follows the application's firmware versions.
 - Fixed the abort/clear confirmation title sitting too high and overlapping the
   status bar.
 
-## 1.3.2 鈥?2026-10-27
+## 1.3.2 —2026-10-27
 
 ### Added
 
@@ -159,9 +159,9 @@ follows the application's firmware versions.
   first jumps to the last.
 - The provisioning page's Connect button now sits directly below the Wi-Fi
   password field.
-- Connecting to a saved network now shows "connecting 鈫?connected + IP".
+- Connecting to a saved network now shows "connecting →connected + IP".
 
-## 1.3.1 鈥?2026-10-27
+## 1.3.1 —2026-10-27
 
 ### Added
 
@@ -176,7 +176,7 @@ follows the application's firmware versions.
 - A double OK press cycles the history filter (all / today / last 7 days); a
   short OK press still opens a record's detail.
 
-## 1.3.0 鈥?2026-10-26
+## 1.3.0 —2026-10-26
 
 ### Added
 
@@ -206,7 +206,7 @@ follows the application's firmware versions.
   input now only turns the backlight off while the hotspot and page stay alive;
   any key restores it immediately instead of leaving the screen lit.
 
-## 1.2.3 鈥?2026-10-26
+## 1.2.3 —2026-10-26
 
 ### Added
 
@@ -218,7 +218,7 @@ follows the application's firmware versions.
 - Every target now reports a miss as 0 instead of showing "miss" on half faces;
   statistics still call it a miss.
 
-## 1.2.2 鈥?2026-10-26
+## 1.2.2 —2026-10-26
 
 ### Fixed
 
@@ -226,7 +226,7 @@ follows the application's firmware versions.
   name or password field, and disables autocorrect, spellcheck and password
   autofill there.
 
-## 1.2.1 鈥?2026-10-26
+## 1.2.1 —2026-10-26
 
 ### Fixed
 
@@ -234,7 +234,7 @@ follows the application's firmware versions.
   hotspot and returns to the Network menu. Previously the press did nothing and
   only a long press could leave the page.
 
-## 1.2.0 鈥?2026-10-25
+## 1.2.0 —2026-10-25
 
 ### Added
 
@@ -248,7 +248,7 @@ follows the application's firmware versions.
 - The Wi-Fi menu entry is now "Phone setup / export"; the setup page offers the
   CSV download next to the network configuration.
 
-## 1.1.0 鈥?2026-10-25
+## 1.1.0 —2026-10-25
 
 ### Added
 
@@ -273,7 +273,7 @@ follows the application's firmware versions.
 - The provisioning page stayed on "scanning" because scans ran while the access
   point was active; it now uses a pre-scan cache and a Refresh button.
 
-## 1.0.0 鈥?first public release
+## 1.0.0 —first public release
 
 - 40 cm half target, three-spot target and 40/80/122 cm full targets.
 - Per-ring arrow counts, group/total/average/inner-ten/miss statistics.

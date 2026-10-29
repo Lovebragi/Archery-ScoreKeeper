@@ -232,6 +232,8 @@ static bool decode_v1(archery_settings_t *settings, const uint8_t *buffer) {
     decoded.beep_volume = ARCHERY_SETTINGS_DEFAULT_BEEP_VOLUME;
     decoded.wifi_save = ARCHERY_SETTINGS_DEFAULT_WIFI_SAVE;
     decoded.timer_seconds = ARCHERY_SETTINGS_DEFAULT_TIMER;
+    decoded.countdown_voice = ARCHERY_SETTINGS_DEFAULT_COUNTDOWN_VOICE;
+    decoded.roll_entry = ARCHERY_SETTINGS_DEFAULT_ROLL_ENTRY;
     if (!archery_settings_valid(&decoded)) return false;
     *settings = decoded;
     return true;
@@ -251,6 +253,8 @@ static bool decode_v2(archery_settings_t *settings, const uint8_t *buffer) {
     decoded.beep_volume = ARCHERY_SETTINGS_DEFAULT_BEEP_VOLUME;
     decoded.wifi_save = ARCHERY_SETTINGS_DEFAULT_WIFI_SAVE;
     decoded.timer_seconds = ARCHERY_SETTINGS_DEFAULT_TIMER;
+    decoded.countdown_voice = ARCHERY_SETTINGS_DEFAULT_COUNTDOWN_VOICE;
+    decoded.roll_entry = ARCHERY_SETTINGS_DEFAULT_ROLL_ENTRY;
     if (!archery_settings_valid(&decoded)) return false;
     *settings = decoded;
     return true;

@@ -1,5 +1,5 @@
 ﻿<p align="right">
-  <strong>绠€浣撲腑鏂?/strong> 路 <a href="archery-scorekeeper-changelog.md">English</a>
+  <a href="archery-scorekeeper-changelog.md">English</a> · <strong>简体中文</strong>
 </p>
 
 # 灏勭璁″垎鍣ㄦ洿鏂版棩蹇?

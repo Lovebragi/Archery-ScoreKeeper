@@ -23,7 +23,7 @@
 #define ARCHERY_SETTINGS_DEFAULT_WIFI_SAVE 1u
 // 每组计时：0 = 关闭，否则为每支箭秒数（20/30/40）。
 #define ARCHERY_SETTINGS_DEFAULT_TIMER 0u
-#define ARCHERY_SETTINGS_DEFAULT_COUNTDOWN_VOICE 1u
+#define ARCHERY_SETTINGS_DEFAULT_COUNTDOWN_VOICE 3u
 #define ARCHERY_SETTINGS_DEFAULT_ROLL_ENTRY 0u
 // v6：magic + 版本 + 靶型 + 方向 + 亮度 + 息屏(2B) + 记录内十 + 语音 + 音量 + 保存Wi-Fi + CRC。
 // 解码兼容 v1（无靶型）、v2（无方向）、v3（无记录内十）、v4（无语音项）与 v5（无保存Wi-Fi）格式。
@@ -46,7 +46,7 @@ typedef struct {
     uint8_t beep_volume;   // 提示音音量档位，对应 0/20/40/60/80/100（0 = 静音）
     uint8_t wifi_save;     // 1 = 保存 Wi-Fi 密码（默认），0 = 不保存
     uint8_t timer_seconds; // 0 = 不计时，否则 20/30/40 秒/支
-    uint8_t countdown_voice; // 1 = 最后十秒播报数字（默认），0 = 关闭
+    uint8_t countdown_voice; // 0 = 关闭，1 = 系统女声，2 = 小豆女声，3 = 豆包女声（默认）
     uint8_t roll_entry;      // 1 = 录入页长按上/下连续加减，短按无效
 } archery_settings_t;
 

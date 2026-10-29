@@ -53,6 +53,8 @@ void archery_voice_prewarm(void);
 
 // 提示音音量（0/20/40/60/80/100），由设置页驱动。
 void archery_voice_set_beep_volume(uint8_t percent);
+// 0=关闭，1=系统女声，2=豆包女声。
+void archery_voice_set_countdown_voice(uint8_t mode);
 
 // 用当前音量响一声，供设置页试听；0 时为静音。
 void archery_voice_preview_beep(void);

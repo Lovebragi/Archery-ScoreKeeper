@@ -200,6 +200,7 @@ static void apply_settings(const archery_settings_t *settings) {
     // 改 MADCTL 时先拿 LVGL 锁，避免和正在进行的刷屏并发。
     s_rotate_keys = settings->rotate != 0;
     archery_voice_set_beep_volume((uint8_t)(settings->beep_volume * 20u));
+    archery_voice_set_countdown_voice(settings->countdown_voice);
     archery_wifi_set_save_enabled(settings->wifi_save != 0);
     if (!settings->wifi_save) archery_wifi_forget_credentials();
     if (bsp_lvgl_lock(200)) {

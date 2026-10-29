@@ -840,8 +840,10 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
                          (unsigned)flow->settings.timer_seconds);
             }
         } else if (row == 6) {
+            static const char *const voicing[] = {"关", "系统", "小豆", "豆包"};
             snprintf(value, sizeof(value), "%s",
-                     flow->settings.countdown_voice ? "开" : "关");
+                     voicing[flow->settings.countdown_voice <= 3u
+                                 ? flow->settings.countdown_voice : 0u]);
         } else if (row == 7) {
             snprintf(value, sizeof(value), "%s",
                      flow->settings.voice_enabled ? "开" : "关");

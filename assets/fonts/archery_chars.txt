@@ -127,6 +127,7 @@ U+5BF9  # 对
 U+5BFC  # 导
 U+5C04  # 射
 U+5C06  # 将
+U+5C0F  # 小
 U+5C31  # 就
 U+5C4F  # 屏
 U+5DEE  # 差
@@ -250,12 +251,14 @@ U+7B2C  # 第
 U+7B5B  # 筛
 U+7BAD  # 箭
 U+7C7B  # 类
+U+7CFB  # 系
 U+7D2F  # 累
 U+7EC3  # 练
 U+7EC4  # 组
 U+7ED3  # 结
 U+7ED8  # 绘
 U+7EDC  # 络
+U+7EDF  # 统
 U+7EE7  # 继
 U+7EE9  # 绩
 U+7EEA  # 绪

@@ -8,6 +8,13 @@ Release history for the archery scorekeeper application. The repository-wide
 [changelog](../CHANGELOG.md) tracks the AI Passport project itself; this file
 follows the application's firmware versions.
 
+## 1.4.6 — 2026-10-30
+
+### Added
+
+- The ten-second countdown voice setting now has four choices: Off / System / Xiaodou / Doubao; Doubao is the default.
+- System and Xiaodou clips are normalized to 600 ms; Doubao keeps the original voice clips.
+
 ## 1.4.5 — 2026-10-30
 
 ### Added

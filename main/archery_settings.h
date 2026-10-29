@@ -10,8 +10,8 @@
 #include <stdint.h>
 
 // 设置页行数：0 = 靶子类型，1 = 屏幕方向，2 = 屏幕亮度，3 = 息屏时间，
-// 4 = 记录内十，5 = 每组计时，6 = 倒数十秒语音，7 = 语音输入开关，8 = 提示音量，9 = 保存 Wi-Fi 密码。
-#define ARCHERY_SETTINGS_ROWS 10u
+// 4 = 记录内十，5 = 每组计时，6 = 倒数十秒语音，7 = 语音录靶，8 = 滚动录入，9 = 提示音量，10 = 保存 Wi-Fi 密码。
+#define ARCHERY_SETTINGS_ROWS 11u
 
 #define ARCHERY_SETTINGS_DEFAULT_BRIGHTNESS 20u
 #define ARCHERY_SETTINGS_DEFAULT_OFF_SECONDS 15u
@@ -24,9 +24,11 @@
 // 每组计时：0 = 关闭，否则为每支箭秒数（20/30/40）。
 #define ARCHERY_SETTINGS_DEFAULT_TIMER 0u
 #define ARCHERY_SETTINGS_DEFAULT_COUNTDOWN_VOICE 1u
+#define ARCHERY_SETTINGS_DEFAULT_ROLL_ENTRY 0u
 // v6：magic + 版本 + 靶型 + 方向 + 亮度 + 息屏(2B) + 记录内十 + 语音 + 音量 + 保存Wi-Fi + CRC。
 // 解码兼容 v1（无靶型）、v2（无方向）、v3（无记录内十）、v4（无语音项）与 v5（无保存Wi-Fi）格式。
-#define ARCHERY_SETTINGS_ENCODED_BYTES 15u
+#define ARCHERY_SETTINGS_ENCODED_BYTES 16u
+#define ARCHERY_SETTINGS_ENCODED_BYTES_V8 15u
 #define ARCHERY_SETTINGS_ENCODED_BYTES_V7 14u
 #define ARCHERY_SETTINGS_ENCODED_BYTES_V6 13u
 #define ARCHERY_SETTINGS_ENCODED_BYTES_V5 12u
@@ -45,6 +47,7 @@ typedef struct {
     uint8_t wifi_save;     // 1 = 保存 Wi-Fi 密码（默认），0 = 不保存
     uint8_t timer_seconds; // 0 = 不计时，否则 20/30/40 秒/支
     uint8_t countdown_voice; // 1 = 最后十秒播报数字（默认），0 = 关闭
+    uint8_t roll_entry;      // 1 = 录入页长按上/下连续加减，短按无效
 } archery_settings_t;
 
 void archery_settings_defaults(archery_settings_t *settings);

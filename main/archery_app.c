@@ -79,6 +79,9 @@ static volatile bool s_ptt_used;
 static esp_timer_handle_t s_repeat_timer;
 static volatile bool s_repeat_active;
 static volatile bool s_repeat_used;
+static volatile bool s_repeat_slow;
+static volatile bool s_repeat_inflight;
+static uint32_t s_repeat_period_us = 60000;
 static archery_key_t s_repeat_key;
 // 按键唤醒后，那颗键在整个启动期间还按着；在它松手前丢弃按键动作，
 // 避免把"唤醒键仍在按"误判成长按。
@@ -508,6 +511,7 @@ static void handle_key(archery_key_t key) {
     case ARCHERY_ACT_NONE:
         break;
     }
+    s_repeat_inflight = false;
     sync_detail_group();
     redraw();
 }
@@ -523,20 +527,29 @@ static archery_button_t physical_button(bsp_btn_t btn) {
 
 static void repeat_timer_cb(void *arg) {
     (void)arg;
+    const bool entry_repeat = s_flow.page == ARCHERY_PAGE_ENTRY &&
+                              s_flow.settings.roll_entry;
+    const bool settings_repeat = s_flow.page == ARCHERY_PAGE_SETTINGS;
+    const bool setup_repeat = s_flow.page == ARCHERY_PAGE_SETUP &&
+                              s_flow.settings.roll_entry && s_flow.setup_row <= 1u;
+    const bool clock_repeat = s_flow.page == ARCHERY_PAGE_CLOCK;
     if (!s_repeat_active || (s_flow.page != ARCHERY_PAGE_HISTORY &&
-                             s_flow.page != ARCHERY_PAGE_DIAG_LOG)) {
+                             s_flow.page != ARCHERY_PAGE_DIAG_LOG && !entry_repeat && !settings_repeat &&
+                             !setup_repeat && !clock_repeat)) {
         if (s_repeat_timer) (void)esp_timer_stop(s_repeat_timer);
         s_repeat_active = false;
         return;
     }
     s_repeat_used = true;
+    if (s_repeat_inflight) return;
     if (s_queue) {
+        s_repeat_inflight = true;
         const app_message_t step = {.type = APP_MSG_KEY, .key = s_repeat_key};
         (void)xQueueSend(s_queue, &step, 0);
     }
     // 第一次触发时从 400 ms 延时切到 60 ms 周期。
     (void)esp_timer_stop(s_repeat_timer);
-    (void)esp_timer_start_periodic(s_repeat_timer, 60000);
+    (void)esp_timer_start_periodic(s_repeat_timer, s_repeat_period_us);
 }
 
 static void timer_tick_cb(void *arg) {
@@ -548,7 +561,7 @@ static void timer_tick_cb(void *arg) {
 
 static void diag_timer_cb(void *arg) {
     (void)arg;
-    if (!s_queue) return;
+    if (!s_queue || s_flow.page != ARCHERY_PAGE_HOME) return;
     const app_message_t message = {.type = APP_MSG_DIAG};
     (void)xQueueSend(s_queue, &message, 0);
 }
@@ -589,25 +602,87 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t event, void *user) {
     // PTT：按下 200 ms 后开始录音（短按仍算单击），松手结束。
     if (event == BSP_BTN_PRESS) {
         const archery_key_t pressed = archery_flow_button_key(physical, s_rotate_keys);
-        if (pressed == ARCHERY_KEY_UP && s_flow.page == ARCHERY_PAGE_ENTRY &&
-            s_flow.settings.voice_enabled && s_ptt_timer) {
-            (void)esp_timer_stop(s_ptt_timer);
-            (void)esp_timer_start_once(s_ptt_timer, 200000);
-        }
-        if ((pressed == ARCHERY_KEY_UP || pressed == ARCHERY_KEY_DOWN) &&
-            (s_flow.page == ARCHERY_PAGE_HISTORY || s_flow.page == ARCHERY_PAGE_DIAG ||
-             s_flow.page == ARCHERY_PAGE_DIAG_LOG) &&
-            s_repeat_timer) {
-            s_repeat_key = pressed;
-            s_repeat_active = true;
-            s_repeat_used = false;
-            (void)esp_timer_stop(s_repeat_timer);
-            (void)esp_timer_start_once(s_repeat_timer, 400000);
+        if (pressed == ARCHERY_KEY_OK) s_repeat_used = false;
+        if (s_flow.page == ARCHERY_PAGE_HOME &&
+            (pressed == ARCHERY_KEY_UP || pressed == ARCHERY_KEY_DOWN)) {
+            s_repeat_used = true;  // 按下即移动，吞掉松手后的 click
+            const app_message_t step = {.type = APP_MSG_KEY, .key = pressed};
+            (void)xQueueSend(s_queue, &step, 0);
         }
         if (pressed == ARCHERY_KEY_OK && s_flow.page == ARCHERY_PAGE_HOME &&
             s_diag_timer) {
             (void)esp_timer_stop(s_diag_timer);
             (void)esp_timer_start_once(s_diag_timer, 3000000);
+        }
+        if (pressed == ARCHERY_KEY_UP && s_flow.page == ARCHERY_PAGE_ENTRY &&
+            s_flow.settings.voice_enabled && !s_flow.settings.roll_entry && s_ptt_timer) {
+            (void)esp_timer_stop(s_ptt_timer);
+            (void)esp_timer_start_once(s_ptt_timer, 200000);
+        }
+        if ((pressed == ARCHERY_KEY_UP || pressed == ARCHERY_KEY_DOWN) &&
+            s_flow.page == ARCHERY_PAGE_WIFI) {
+            s_repeat_used = true;
+            const app_message_t step = {.type = APP_MSG_KEY, .key = pressed};
+            (void)xQueueSend(s_queue, &step, 0);
+        } else if ((pressed == ARCHERY_KEY_UP || pressed == ARCHERY_KEY_DOWN) &&
+            s_flow.page == ARCHERY_PAGE_CLOCK && s_repeat_timer) {
+            s_repeat_key = pressed;
+            s_repeat_active = true;
+            s_repeat_used = true;
+            s_repeat_slow = false;
+            s_repeat_period_us = 300000;
+            (void)esp_timer_stop(s_repeat_timer);
+            const app_message_t step = {.type = APP_MSG_KEY, .key = pressed};
+            (void)xQueueSend(s_queue, &step, 0);
+            (void)esp_timer_start_periodic(s_repeat_timer, 300000);
+        } else if ((pressed == ARCHERY_KEY_UP || pressed == ARCHERY_KEY_DOWN) &&
+            s_flow.page == ARCHERY_PAGE_SETUP && s_flow.settings.roll_entry &&
+            s_flow.setup_row <= 1u && s_repeat_timer) {
+            s_repeat_key = pressed;
+            s_repeat_active = true;
+            s_repeat_used = true;
+            s_repeat_slow = true;
+            s_repeat_period_us = 500000;
+            (void)esp_timer_stop(s_repeat_timer);
+            const app_message_t step = {.type = APP_MSG_KEY, .key = pressed};
+            (void)xQueueSend(s_queue, &step, 0);
+            (void)esp_timer_start_periodic(s_repeat_timer, 500000);
+        } else if ((pressed == ARCHERY_KEY_UP || pressed == ARCHERY_KEY_DOWN) &&
+            s_flow.page == ARCHERY_PAGE_SETTINGS && s_repeat_timer) {
+            s_repeat_key = pressed;
+            s_repeat_active = true;
+            s_repeat_used = false;
+            s_repeat_slow = true;
+            s_repeat_period_us = 500000;
+            s_repeat_used = true;
+            (void)esp_timer_stop(s_repeat_timer);
+            const app_message_t step = {.type = APP_MSG_KEY, .key = pressed};
+            (void)xQueueSend(s_queue, &step, 0);
+            (void)esp_timer_start_once(s_repeat_timer, 500000);
+        } else if ((pressed == ARCHERY_KEY_UP || pressed == ARCHERY_KEY_DOWN) &&
+            s_flow.page == ARCHERY_PAGE_ENTRY && s_flow.settings.roll_entry &&
+            s_repeat_timer) {
+            s_repeat_key = pressed;
+            s_repeat_active = true;
+            s_repeat_used = true;
+            s_repeat_slow = true;
+            s_repeat_period_us = 500000;
+            (void)esp_timer_stop(s_repeat_timer);
+            const app_message_t step = {.type = APP_MSG_KEY, .key = pressed};
+            (void)xQueueSend(s_queue, &step, 0);
+            (void)esp_timer_start_periodic(s_repeat_timer, 500000);
+        } else if ((pressed == ARCHERY_KEY_UP || pressed == ARCHERY_KEY_DOWN) &&
+                   (s_flow.page == ARCHERY_PAGE_HISTORY || s_flow.page == ARCHERY_PAGE_DIAG ||
+                    s_flow.page == ARCHERY_PAGE_DIAG_LOG) && s_repeat_timer) {
+            s_repeat_key = pressed;
+            s_repeat_active = true;
+            s_repeat_used = true;
+            s_repeat_slow = false;
+            s_repeat_period_us = 60000;
+            (void)esp_timer_stop(s_repeat_timer);
+            const app_message_t step = {.type = APP_MSG_KEY, .key = pressed};
+            (void)xQueueSend(s_queue, &step, 0);
+            (void)esp_timer_start_once(s_repeat_timer, 400000);
         }
         return;
     }
@@ -633,6 +708,13 @@ static void on_key(bsp_btn_t btn, bsp_btn_ev_t event, void *user) {
             return;  // 上键长按已是 PTT，不再产生普通事件
         }
     } else if (event == BSP_BTN_CLICK || event == BSP_BTN_DOUBLE) {
+        if ((s_flow.page == ARCHERY_PAGE_ENTRY ||
+             s_flow.page == ARCHERY_PAGE_CLOCK ||
+             (s_flow.page == ARCHERY_PAGE_SETUP && s_flow.setup_row <= 1u)) &&
+            (s_flow.page == ARCHERY_PAGE_CLOCK || s_flow.settings.roll_entry) &&
+            !archery_flow_button_is_ok(physical, s_rotate_keys)) {
+            return;  // 滚动录入开启时上/下没有短按行为
+        }
         if (s_repeat_used) {
             s_repeat_used = false;  // 长按连发已经处理过，吞掉松手后的单击
             return;

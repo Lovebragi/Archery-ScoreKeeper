@@ -8,6 +8,20 @@ Release history for the archery scorekeeper application. The repository-wide
 [changelog](../CHANGELOG.md) tracks the AI Passport project itself; this file
 follows the application's firmware versions.
 
+## 1.4.5 — 2026-10-30
+
+### Added
+
+- New Roll entry setting: on the entry and new-training screens, holding up/down changes the ring count, group count or arrows per group continuously at 500 ms per step.
+- Settings now uses up/down to select a row and OK to cycle that row's value; holding up/down waits 0.5 s and then moves one row every 0.5 s.
+- Home, network, history and date/time navigation now reacts on press; date/time repeats every 300 ms while held.
+- With Roll entry on, holding up/down on the entry screen starts immediately with no first-step delay.
+
+### Fixed
+
+- White screen/reboot when scrolling to the bottom of Settings: the 11-row label array is complete.
+- The repeat period was reset to 60 ms after the first step, making clock fields scroll far too fast.
+
 ## 1.4.3 — 2026-10-30
 
 ### Fixed

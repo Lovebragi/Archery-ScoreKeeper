@@ -799,7 +799,8 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
 
     static const char *row_names[] = {"靶子类型", "屏幕方向", "屏幕亮度",
                                       "息屏时间", "记录内十", "每组计时",
-                                      "倒数十秒语音", "语音输入", "提示音量", "保存Wi-Fi密码"};
+                                      "倒数十秒语音", "语音录靶", "滚动录入",
+                                      "提示音量", "保存Wi-Fi密码"};
     char value[24];
     const uint8_t visible = 6;
     uint8_t offset = flow->settings_row >= visible ? (uint8_t)(flow->settings_row - visible + 1u) : 0u;
@@ -845,9 +846,12 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
             snprintf(value, sizeof(value), "%s",
                      flow->settings.voice_enabled ? "开" : "关");
         } else if (row == 8) {
+            snprintf(value, sizeof(value), "%s",
+                     flow->settings.roll_entry ? "开" : "关");
+        } else if (row == 9) {
             snprintf(value, sizeof(value), "%u%%",
                      (unsigned)(flow->settings.beep_volume * 20u));
-        } else if (row == 9) {
+        } else if (row == 10) {
             snprintf(value, sizeof(value), "%s",
                      flow->settings.wifi_save ? "开" : "关");
         }
@@ -855,8 +859,8 @@ static void render_settings(lv_obj_t *scr, const archery_flow_t *flow) {
                                       selected ? C_GOLD : C_TEXT);
         lv_obj_align(number, LV_ALIGN_RIGHT_MID, -12, 0);
     }
-    add_hint(scr, "上/下 调整 · 确定 下一项", 262);
-    add_hint(scr, "长按确定 保存并返回", 288);
+    add_hint(scr, "上/下 选择 · 确定 循环", 262);
+    add_hint(scr, "长按确定 保存返回", 288);
 }
 
 // 手动对时：年 / 月 / 日 / 时 / 分。设备没有 RTC 电池，断电后从上次时间继续。
@@ -1054,7 +1058,7 @@ static void render_diag(lv_obj_t *scr, const archery_flow_t *flow,
         lv_obj_align(number, LV_ALIGN_RIGHT_MID, -8, 0);
     }
     add_hint(scr, "上/下 选择 · 确定 日志", 262);
-    add_hint(scr, "长按确定 返回主页", 288);
+    add_hint(scr, "长按确定 保存返回", 288);
 }
 
 static void render_diag_log(lv_obj_t *scr, const archery_flow_t *flow) {

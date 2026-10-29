@@ -397,23 +397,30 @@ static archery_act_t handle_clock(archery_flow_t *flow, archery_key_t key) {
     return ARCHERY_ACT_NONE;
 }
 
+static bool settings_cycle_value(archery_settings_t *settings, uint8_t row) {
+    if (archery_settings_adjust(settings, row, 1)) return true;
+    // 已到最大值：反向走到最小值，实现循环。
+    while (archery_settings_adjust(settings, row, -1)) {
+    }
+    return true;
+}
+
 static archery_act_t handle_settings(archery_flow_t *flow, archery_key_t key) {
     switch (key) {
     case ARCHERY_KEY_UP:
+        flow->settings_row = flow->settings_row == 0
+                                 ? (uint8_t)(ARCHERY_SETTINGS_ROWS - 1u)
+                                 : (uint8_t)(flow->settings_row - 1u);
+        break;
     case ARCHERY_KEY_DOWN:
-        if (flow->settings_row < ARCHERY_SETTINGS_ROWS &&
-            archery_settings_adjust(&flow->settings, flow->settings_row,
-                                    key == ARCHERY_KEY_UP ? 1 : -1)) {
-            // 靶型在下一组开始时生效；方向/亮度立即生效；息屏时间立即被空闲计时采用。
-            return ARCHERY_ACT_SETTINGS_CHANGED;
-        }
+        flow->settings_row = flow->settings_row + 1u >= ARCHERY_SETTINGS_ROWS
+                                 ? 0u : (uint8_t)(flow->settings_row + 1u);
         break;
     case ARCHERY_KEY_OK:
-        if (flow->settings_row + 1u < ARCHERY_SETTINGS_ROWS) {
-            flow->settings_row++;
-        } else {
-            flow->page = ARCHERY_PAGE_HOME;
-            return ARCHERY_ACT_SETTINGS_SAVE;
+        if (flow->settings_row < ARCHERY_SETTINGS_ROWS &&
+            settings_cycle_value(&flow->settings, flow->settings_row)) {
+            // 靶型在下一组开始时生效；方向/亮度立即生效；息屏时间立即被空闲计时采用。
+            return ARCHERY_ACT_SETTINGS_CHANGED;
         }
         break;
     case ARCHERY_KEY_OK_LONG:

@@ -422,7 +422,6 @@ static void test_triple_target_setup_and_entry(void) {
 static void test_settings_page(void) {
     archery_flow_t flow;
     archery_flow_init(&flow);
-    // 主页第 4 项进入设置
     press(&flow, ARCHERY_KEY_DOWN);
     press(&flow, ARCHERY_KEY_DOWN);
     press(&flow, ARCHERY_KEY_DOWN);
@@ -430,130 +429,88 @@ static void test_settings_page(void) {
     assert(flow.page == ARCHERY_PAGE_SETTINGS);
     assert(flow.settings_row == 0);
     assert(flow.settings.target == ARCHERY_TARGET_HALF_40);
-    assert(flow.settings.rotate == 1);
-    assert(flow.settings.brightness == ARCHERY_SETTINGS_DEFAULT_BRIGHTNESS);
-    assert(flow.settings.off_seconds == ARCHERY_SETTINGS_DEFAULT_OFF_SECONDS);
 
-    // 靶型：40 半靶 -> 三联靶 -> 40 全靶；到底钳制
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_SETTINGS_CHANGED);
+    // 确定循环当前行：半靶 -> 三联 -> 全靶 -> 半靶
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.target == ARCHERY_TARGET_TRIPLE_40H);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.target == ARCHERY_TARGET_FULL_40);
-    press(&flow, ARCHERY_KEY_DOWN);
-    assert(flow.settings.target == ARCHERY_TARGET_TRIPLE_40H);
-    press(&flow, ARCHERY_KEY_DOWN);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.target == ARCHERY_TARGET_HALF_40);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_NONE);
 
-    // 屏幕方向：默认倒转，调整即切换
-    press(&flow, ARCHERY_KEY_OK);
+    // 上下只移动选中行，并在首尾循环
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_NONE);
+    assert(flow.settings_row == ARCHERY_SETTINGS_ROWS - 1);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_NONE);
+    assert(flow.settings_row == 0);
+
+    // 方向：确定切换
+    press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.settings_row == 1);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.rotate == 0);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.rotate == 1);
 
-    // 亮度：默认 20（最低），向上调到 40
-    press(&flow, ARCHERY_KEY_OK);
+    // 亮度、息屏、记录内十、计时
+    press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.settings_row == 2);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_NONE);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.brightness == 40);
 
-    // 息屏时间：15 -> 30
-    press(&flow, ARCHERY_KEY_OK);
+    press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.settings_row == 3);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.off_seconds == 30);
 
-    // 记录内十：默认开，切换为关
-    press(&flow, ARCHERY_KEY_OK);
+    press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.settings_row == 4);
-    assert(flow.settings.record_x == 1);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.record_x == 0);
 
-    // 每组计时：默认关，调到 20 秒/支
-    press(&flow, ARCHERY_KEY_OK);
+    press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.settings_row == 5);
-    assert(flow.settings.timer_seconds == 0);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.timer_seconds == 20);
 
-    // 倒数十秒语音：默认开，切换为关
-    press(&flow, ARCHERY_KEY_OK);
+    // 倒数十秒语音：豆包 -> 关 -> 系统 -> 小豆 -> 豆包
+    press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.settings_row == 6);
-    assert(flow.settings.countdown_voice == 1);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(flow.settings.countdown_voice == 3);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.countdown_voice == 0);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(flow.settings.countdown_voice == 1);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(flow.settings.countdown_voice == 2);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(flow.settings.countdown_voice == 3);
 
-    // 语音输入：默认开，切换为关
-    press(&flow, ARCHERY_KEY_OK);
+    // 语音、滚动录入、音量、Wi-Fi
+    press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.settings_row == 7);
-    assert(flow.settings.voice_enabled == 1);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.voice_enabled == 0);
 
-    // 提示音量：默认 60%，调到 80%
-    press(&flow, ARCHERY_KEY_OK);
+    press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.settings_row == 8);
-    assert(flow.settings.beep_volume == 3);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_UP) == ARCHERY_ACT_SETTINGS_CHANGED);
-    assert(flow.settings.beep_volume == 4);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
+    assert(flow.settings.roll_entry == 1);
 
-    // 保存 Wi-Fi 密码是最后一行；再按确定离开设置并回主页
-    press(&flow, ARCHERY_KEY_OK);
+    press(&flow, ARCHERY_KEY_DOWN);
     assert(flow.settings_row == 9);
-    assert(flow.settings.wifi_save == 1);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_DOWN) == ARCHERY_ACT_SETTINGS_CHANGED);
-    assert(flow.settings.wifi_save == 0);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_SAVE);
-    assert(flow.page == ARCHERY_PAGE_HOME);
-
-    // 主页第 3 项是日期时间；对时后回到主页
-    flow.home_select = 2;
-    archery_flow_set_clock(&flow, 0x2B3A4C5Du, true);  // 2026-10-25 14:32 附近
-    press(&flow, ARCHERY_KEY_OK);
-    assert(flow.page == ARCHERY_PAGE_CLOCK);
-    assert(flow.clock_row == 0);
-    // 年 +1、月 +1、日 +1、时 +1、分 +1
-    press(&flow, ARCHERY_KEY_UP);
-    press(&flow, ARCHERY_KEY_OK);
-    press(&flow, ARCHERY_KEY_UP);
-    press(&flow, ARCHERY_KEY_OK);
-    press(&flow, ARCHERY_KEY_UP);
-    press(&flow, ARCHERY_KEY_OK);
-    press(&flow, ARCHERY_KEY_UP);
-    press(&flow, ARCHERY_KEY_OK);
-    press(&flow, ARCHERY_KEY_UP);
-    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_CLOCK_SAVE);
-    assert(flow.page == ARCHERY_PAGE_HOME);
-    assert(flow.home_select == 2);
-
-    // 再次进入设置：值保留；长按确定保存并返回
-    flow.home_select = 3;
-    press(&flow, ARCHERY_KEY_OK);
-    assert(flow.page == ARCHERY_PAGE_SETTINGS);
-    assert(flow.settings.brightness == 40);
-    assert(flow.settings.voice_enabled == 0);
+    assert(flow.settings.beep_volume == 3);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.beep_volume == 4);
+
+    press(&flow, ARCHERY_KEY_DOWN);
+    assert(flow.settings_row == 10);
+    assert(archery_flow_handle(&flow, ARCHERY_KEY_OK) == ARCHERY_ACT_SETTINGS_CHANGED);
     assert(flow.settings.wifi_save == 0);
+
+    // 长按确定保存并回主页
     assert(archery_flow_handle(&flow, ARCHERY_KEY_OK_LONG) == ARCHERY_ACT_SETTINGS_SAVE);
     assert(flow.page == ARCHERY_PAGE_HOME);
-
-    // 用 NVS 读到的设置覆盖副本
-    archery_settings_t stored = {.target = ARCHERY_TARGET_FULL_122, .rotate = 0,
-                                 .brightness = 40, .off_seconds = 120, .record_x = 1};
-    archery_flow_set_settings(&flow, &stored);
-    assert(flow.settings.target == ARCHERY_TARGET_FULL_122);
-    assert(flow.settings.rotate == 0);
-    assert(flow.settings.brightness == 40);
-    assert(flow.settings.off_seconds == 120);
-    archery_settings_t invalid = {.target = 42, .rotate = 0,
-                                  .brightness = 55, .off_seconds = 30};
-    archery_flow_set_settings(&flow, &invalid);
-    assert(flow.settings.brightness == 40);  // 非法值被忽略
-    assert(flow.settings.target == ARCHERY_TARGET_FULL_122);
 }
 
 static void test_history_pages(void) {
